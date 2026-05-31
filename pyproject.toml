@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amazon-photos-mcp"
+version = "0.3.0"
+description = "MCP server for Amazon Photos — search, browse, upload, download, and manage your photo library"
+requires-python = ">=3.10.10"
+authors = [
+    { name = "Matt Whitt", email = "james.matthew.whitt@gmail.com" },
+]
+license = { text = "MIT" }
+keywords = ["amazon-photos", "mcp", "fastmcp", "claude", "photo-management"]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: File Sharing",
+    "Topic :: Internet",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "fastmcp>=2.0.0",
+    # Upstream amazon_photos has no stable releases — pin a known-good commit.
+    # Remove allow-direct-references below before publishing to PyPI.
+    "amazon-photos @ git+https://github.com/trevorhobenshield/amazon_photos.git@685c965b5a4ba1ac85d418820ad200e12c18a46d",
+    "httpx",
+    "pyarrow",
+]
+
+[project.scripts]
+amazon-photos-mcp = "amazon_photos_mcp:main"
+get-amazon-cookies = "scripts.get_cookies:main"
+get-amazon-cookies-easy = "scripts.get_cookies_easy:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "mypy>=1.0",
+    "pytest-cov>=4.0",
+]
+scripts = [
+    "rookiepy>=0.5.6",
+    "playwright>=1.50",
+]
+
+[project.urls]
+Homepage = "https://github.com/jmattwhitt/amazon-photos-mcp"
+Repository = "https://github.com/jmattwhitt/amazon-photos-mcp.git"
+Issues = "https://github.com/jmattwhitt/amazon-photos-mcp/issues"
+
+# Required because amazon-photos is installed from a git commit.
+# Remove this section before publishing to PyPI.
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.coverage.run]
+source = ["amazon_photos_mcp"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
