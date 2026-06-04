@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import io
 import json
@@ -14,6 +15,8 @@ import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
+
+import pandas as pd
 
 from fastmcp import FastMCP
 
@@ -69,12 +72,16 @@ _cookie_cached_mtime: float | None = None
 def _cookie_age_hours() -> float | None:
     global _cookie_last_stat, _cookie_cached_mtime
     now = time.time()
+    mtime: float | None
     if now - _cookie_last_stat < _COOKIE_STAT_CACHE_TTL and _cookie_cached_mtime is not None:
+        # Cache hit — but the file could have been deleted since it was cached.
+        # If the cache mtime points to a now-missing file, treat it as missing.
         mtime = _cookie_cached_mtime
-    elif not _AMAZON_COOKIE_PATH.exists():
-        mtime = None
     else:
-        _cookie_cached_mtime = _AMAZON_COOKIE_PATH.stat().st_mtime
+        try:
+            _cookie_cached_mtime = _AMAZON_COOKIE_PATH.stat().st_mtime
+        except FileNotFoundError:
+            _cookie_cached_mtime = None
         _cookie_last_stat = now
         mtime = _cookie_cached_mtime
     if mtime is None:
@@ -232,10 +239,9 @@ def _get_client(force_refresh: bool = False) -> Any:
 
 def _is_nan(v: Any) -> bool:
     try:
-        import pandas as pd
         if pd.isna(v):
             return True
-    except (TypeError, ValueError, ImportError):
+    except (TypeError, ValueError):
         pass
     return False
 
@@ -251,8 +257,10 @@ def _safe_df_to_list(df: Any, max_results: int = 50, slim: bool = False) -> list
         return df[:max_results]
     if hasattr(df, "empty") and df.empty:
         return []
-    if "id" in df.columns:
+    if hasattr(df, "columns") and "id" in df.columns:
         df = df.drop_duplicates(subset=["id"])
+    if not hasattr(df, "to_dict"):
+        return [{"value": str(df)}]
     records = df.head(max_results).to_dict(orient="records")
     result = [_clean_row(r) for r in records]
     if slim:
@@ -484,13 +492,9 @@ def list_folders() -> list[dict[str, Any]]:
 def get_folder_tree() -> str:
     """Display the folder tree of your Amazon Photos library."""
     ap = _get_client()
-    with _stdout_lock:
-        old_stdout = sys.stdout
-        sys.stdout = buf = io.StringIO()
-        try:
-            ap.print_tree()
-        finally:
-            sys.stdout = old_stdout
+    buf = io.StringIO()
+    with _stdout_lock, contextlib.redirect_stdout(buf):
+        ap.print_tree()
     return buf.getvalue() or "No folder tree available."
 
 
@@ -687,8 +691,12 @@ def list_recently_deleted(within_days: int = 7) -> list[dict[str, Any]]:
             df["modifiedDate"] = pd.to_datetime(df["modifiedDate"], utc=True, errors="coerce")
             df = df[df["modifiedDate"] >= cutoff]
             df = df.sort_values("modifiedDate", ascending=False)
-        except Exception:
-            pass
+        except (TypeError, ValueError, pd.errors.OutOfBoundsDatetime) as e:
+            result = _safe_df_to_list(df, max_results=200)
+            for r in result:
+                r["_date_filter_applied"] = False
+                r["_date_filter_error"] = str(e)
+            return result
 
     return _safe_df_to_list(df, max_results=200)
 
