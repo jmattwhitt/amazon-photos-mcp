@@ -17,10 +17,47 @@ from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
 import pandas as pd
-
 from fastmcp import FastMCP
 
 mcp = FastMCP("amazon-photos")
+
+# Tool annotations per MCP 2025-11-25 spec
+_READ_ONLY_TOOLS: frozenset[str] = frozenset({
+    "check_connection", "refresh_client", "validate_cookies",
+    "get_storage_usage", "get_aggregations",
+    "search_photos", "get_photos", "get_videos",
+    "search_by_date", "search_by_things",
+    "get_photo_url", "get_exif_data",
+    "list_folders", "get_folder_tree",
+    "list_albums", "list_people", "search_by_person",
+    "find_duplicates", "preview_duplicate_group",
+    "check_db_integrity",
+})
+
+_DESTRUCTIVE_TOOLS: frozenset[str] = frozenset({
+    "permanently_delete", "trash_items", "trash_duplicates",
+    "keep_specific", "merge_people", "hide_items",
+})
+
+_IDEMPOTENT_TOOLS: frozenset[str] = frozenset({
+    "create_album", "add_to_album", "remove_from_album",
+    "favorite_items", "unfavorite_items", "unhide_items",
+    "name_person", "restore_items", "upload_file", "upload_folder",
+    "list_trashed", "list_recently_deleted",
+    "download_files", "download_by_date", "download_for_pipeline",
+})
+
+
+def _tool_annotations(tool_name: str) -> dict[str, bool]:
+    """Return MCP tool annotations for the given tool name."""
+    annotations: dict[str, bool] = {}
+    if tool_name in _READ_ONLY_TOOLS:
+        annotations["readOnlyHint"] = True
+    if tool_name in _DESTRUCTIVE_TOOLS:
+        annotations["destructiveHint"] = True
+    if tool_name in _IDEMPOTENT_TOOLS:
+        annotations["idempotentHint"] = True
+    return annotations
 
 PIPELINE_DEFAULT_DIR = os.environ.get(
     "AMAZON_PHOTOS_PIPELINE_DIR",
@@ -268,7 +305,7 @@ def _safe_df_to_list(df: Any, max_results: int = 50, slim: bool = False) -> list
     return result
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("check_connection"))
 @_tool
 def check_connection() -> dict[str, Any]:
     """Test connection to Amazon Photos and report storage usage and cookie health."""
@@ -294,7 +331,7 @@ def check_connection() -> dict[str, Any]:
     return data
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("refresh_client"))
 @_tool
 def refresh_client() -> dict[str, Any]:
     """Force a fresh client connection. Use after updating cookies.json."""
@@ -302,7 +339,7 @@ def refresh_client() -> dict[str, Any]:
     return check_connection()
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("validate_cookies"))
 @_tool
 def validate_cookies() -> dict[str, Any]:
     """Check whether stored cookies are still accepted by Amazon."""
@@ -333,7 +370,7 @@ def validate_cookies() -> dict[str, Any]:
         }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_storage_usage"))
 @_tool
 def get_storage_usage() -> dict[str, Any]:
     """Get Amazon Photos storage usage (plan, space used, photo/video counts)."""
@@ -344,7 +381,7 @@ def get_storage_usage() -> dict[str, Any]:
     return {"usage": str(usage)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_aggregations"))
 @_tool
 def get_aggregations(category: str = "all") -> dict[str, Any]:
     """Get auto-generated aggregations: people, things, locations, dates."""
@@ -359,7 +396,7 @@ def get_aggregations(category: str = "all") -> dict[str, Any]:
     return {"aggregations": str(result)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("search_photos"))
 @_tool
 def search_photos(query: str, max_results: int = 25) -> list[dict[str, Any]]:
     """Search Amazon Photos by query string with optional filters (type, things, dates, etc.)."""
@@ -368,7 +405,7 @@ def search_photos(query: str, max_results: int = 25) -> list[dict[str, Any]]:
     return _safe_df_to_list(df, min(max_results, 200))
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_photos"))
 @_tool
 def get_photos(max_results: int = 25) -> list[dict[str, Any]]:
     """Get recent photos from your Amazon Photos library."""
@@ -377,7 +414,7 @@ def get_photos(max_results: int = 25) -> list[dict[str, Any]]:
     return _safe_df_to_list(df, min(max_results, 200), slim=True)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_videos"))
 @_tool
 def get_videos(max_results: int = 25) -> list[dict[str, Any]]:
     """Get recent videos from your Amazon Photos library."""
@@ -386,7 +423,7 @@ def get_videos(max_results: int = 25) -> list[dict[str, Any]]:
     return _safe_df_to_list(df, min(max_results, 200), slim=True)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("search_by_date"))
 @_tool
 def search_by_date(
     year: int,
@@ -406,7 +443,7 @@ def search_by_date(
     return _safe_df_to_list(df, min(max_results, 200))
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("search_by_things"))
 @_tool
 def search_by_things(
     things: str,
@@ -419,7 +456,7 @@ def search_by_things(
     return _safe_df_to_list(df, min(max_results, 200))
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_photo_url"))
 @_tool
 def get_photo_url(node_id: str) -> dict[str, Any]:
     """Get the direct download URL for a photo/video by node ID."""
@@ -440,7 +477,7 @@ def get_photo_url(node_id: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_exif_data"))
 @_tool
 def get_exif_data(node_id: str) -> dict[str, Any]:
     """Get EXIF metadata for a photo by node ID. Falls back to local parquet DB if API doesn't expose EXIF."""
@@ -478,7 +515,7 @@ def get_exif_data(node_id: str) -> dict[str, Any]:
     return {"node_id": node_id, "exif": {}, "note": "No EXIF data found."}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("list_folders"))
 @_tool
 def list_folders() -> list[dict[str, Any]]:
     """List all folders in your Amazon Photos library."""
@@ -487,7 +524,7 @@ def list_folders() -> list[dict[str, Any]]:
     return _safe_df_to_list(df, max_results=500)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("get_folder_tree"))
 @_tool
 def get_folder_tree() -> str:
     """Display the folder tree of your Amazon Photos library."""
@@ -498,7 +535,7 @@ def get_folder_tree() -> str:
     return buf.getvalue() or "No folder tree available."
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("list_albums"))
 @_tool
 def list_albums(max_results: int = 100) -> list[dict[str, Any]]:
     """List all albums in your Amazon Photos library."""
@@ -507,7 +544,7 @@ def list_albums(max_results: int = 100) -> list[dict[str, Any]]:
     return _safe_df_to_list(result, max_results)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("create_album"))
 @_tool
 def create_album(name: str) -> dict[str, Any]:
     """Create a new album in Amazon Photos."""
@@ -518,7 +555,7 @@ def create_album(name: str) -> dict[str, Any]:
     return {"status": "created", "name": name, "result": str(result)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("add_to_album"))
 @_tool
 def add_to_album(album_id: str, node_ids: list[str]) -> dict[str, Any]:
     """Add photos/videos to an existing album."""
@@ -529,7 +566,7 @@ def add_to_album(album_id: str, node_ids: list[str]) -> dict[str, Any]:
     return {"status": "added", "album_id": album_id, "count": len(node_ids)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("remove_from_album"))
 @_tool
 def remove_from_album(album_id: str, node_ids: list[str]) -> dict[str, Any]:
     """Remove photos/videos from an album (does not delete files)."""
@@ -540,7 +577,7 @@ def remove_from_album(album_id: str, node_ids: list[str]) -> dict[str, Any]:
     return {"status": "removed", "album_id": album_id, "count": len(node_ids)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("favorite_items"))
 @_tool
 def favorite_items(node_ids: list[str]) -> dict[str, Any]:
     """Mark photos/videos as favorites."""
@@ -551,7 +588,7 @@ def favorite_items(node_ids: list[str]) -> dict[str, Any]:
     return {"status": "favorited", "count": len(node_ids)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("unfavorite_items"))
 @_tool
 def unfavorite_items(node_ids: list[str]) -> dict[str, Any]:
     """Remove photos/videos from favorites."""
@@ -562,7 +599,7 @@ def unfavorite_items(node_ids: list[str]) -> dict[str, Any]:
     return {"status": "unfavorited", "count": len(node_ids)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("hide_items"))
 @_tool
 def hide_items(node_ids: list[str]) -> dict[str, Any]:
     """Hide photos/videos from the main library view."""
@@ -573,7 +610,7 @@ def hide_items(node_ids: list[str]) -> dict[str, Any]:
     return {"status": "hidden", "count": len(node_ids)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("unhide_items"))
 @_tool
 def unhide_items(node_ids: list[str]) -> dict[str, Any]:
     """Unhide photos/videos (make them visible again)."""
@@ -584,7 +621,7 @@ def unhide_items(node_ids: list[str]) -> dict[str, Any]:
     return {"status": "unhidden", "count": len(node_ids)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("list_people"))
 @_tool
 def list_people() -> list[dict[str, Any]]:
     """List all face clusters (people) recognized in your Amazon Photos library."""
@@ -603,7 +640,7 @@ def list_people() -> list[dict[str, Any]]:
     return results
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("search_by_person"))
 @_tool
 def search_by_person(person: str, max_results: int = 50) -> list[dict[str, Any]]:
     """Search photos containing a specific person by name or cluster ID."""
@@ -622,7 +659,7 @@ def search_by_person(person: str, max_results: int = 50) -> list[dict[str, Any]]
     return _safe_df_to_list(df, max_results)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("name_person"))
 @_tool
 def name_person(cluster_id: str, name: str) -> dict[str, Any]:
     """Assign a name to an unidentified face cluster."""
@@ -633,7 +670,7 @@ def name_person(cluster_id: str, name: str) -> dict[str, Any]:
     return {"status": "named", "cluster_id": cluster_id, "name": name}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("merge_people"))
 @_tool
 def merge_people(source_cluster_ids: list[str], target_cluster_id: str) -> dict[str, Any]:
     """Merge face clusters into one (same person recognized multiple ways)."""
@@ -648,7 +685,7 @@ def merge_people(source_cluster_ids: list[str], target_cluster_id: str) -> dict[
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("trash_items"))
 @_tool
 def trash_items(node_ids: list[str]) -> dict[str, Any]:
     """Move items to the trash (recoverable for 30 days)."""
@@ -663,7 +700,7 @@ def trash_items(node_ids: list[str]) -> dict[str, Any]:
     return {"status": "ok", "action": "trashed", "count": len(node_ids), "node_ids": node_ids}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("list_trashed"))
 @_tool
 def list_trashed() -> list[dict[str, Any]]:
     """List items currently in the Amazon Photos trash."""
@@ -672,7 +709,7 @@ def list_trashed() -> list[dict[str, Any]]:
     return _safe_df_to_list(df, max_results=200)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("list_recently_deleted"))
 @_tool
 def list_recently_deleted(within_days: int = 7) -> list[dict[str, Any]]:
     """List items trashed within the last N days, newest first."""
@@ -701,7 +738,7 @@ def list_recently_deleted(within_days: int = 7) -> list[dict[str, Any]]:
     return _safe_df_to_list(df, max_results=200)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("restore_items"))
 @_tool
 def restore_items(node_ids: list[str]) -> dict[str, Any]:
     """Restore items from the trash back to the library."""
@@ -716,7 +753,7 @@ def restore_items(node_ids: list[str]) -> dict[str, Any]:
     return {"status": "ok", "action": "restored", "count": len(node_ids), "node_ids": node_ids}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("permanently_delete"))
 @_tool
 def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, Any]:
     """Permanently delete items (bypasses trash — irreversible). Requires confirm=True."""
@@ -735,7 +772,7 @@ def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, 
     return {"status": "ok", "action": "permanently_deleted", "count": len(node_ids), "node_ids": node_ids}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("download_files"))
 @_tool
 def download_files(node_ids: list[str], output_dir: str = "") -> dict[str, Any]:
     """Download files from Amazon Photos by node ID."""
@@ -758,7 +795,7 @@ def download_files(node_ids: list[str], output_dir: str = "") -> dict[str, Any]:
     return {"status": "ok", "action": "downloaded", "count": len(node_ids), "output_dir": str(out)}
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("download_by_date"))
 @_tool
 def download_by_date(
     year: int,
@@ -810,7 +847,7 @@ def download_by_date(
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("download_for_pipeline"))
 @_tool
 def download_for_pipeline(
     query: str,
@@ -855,7 +892,7 @@ def download_for_pipeline(
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("upload_file"))
 @_tool
 def upload_file(file_path: str) -> dict[str, Any]:
     """Upload a single file to Amazon Photos. Deduplicates by MD5."""
@@ -882,7 +919,7 @@ def upload_file(file_path: str) -> dict[str, Any]:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("upload_folder"))
 @_tool
 def upload_folder(folder_path: str) -> dict[str, Any]:
     """Upload all photos/videos in a folder to Amazon Photos (recursive). Deduplicates by MD5."""
@@ -904,7 +941,7 @@ def upload_folder(folder_path: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("check_db_integrity"))
 @_tool
 def check_db_integrity() -> dict[str, Any]:
     """Validate the local parquet metadata cache: schema, row count, and file age."""
@@ -953,7 +990,7 @@ def check_db_integrity() -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("find_duplicates"))
 @_tool
 def find_duplicates(max_groups: int = 50, refresh_db: bool = False) -> dict[str, Any]:
     """Find exact duplicate files in your library by MD5 hash. Read-only."""
@@ -1007,7 +1044,7 @@ def find_duplicates(max_groups: int = 50, refresh_db: bool = False) -> dict[str,
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("preview_duplicate_group"))
 @_tool
 def preview_duplicate_group(md5_hash: str) -> dict[str, Any]:
     """Show all copies of an MD5 hash with full metadata, oldest first."""
@@ -1031,7 +1068,7 @@ def preview_duplicate_group(md5_hash: str) -> dict[str, Any]:
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("keep_specific"))
 @_tool
 def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str, Any]:
     """Keep a specific copy and trash all other duplicates in an MD5 group."""
@@ -1069,7 +1106,7 @@ def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=_tool_annotations("trash_duplicates"))
 @_tool
 def trash_duplicates(
     md5_hashes: list[str] | None = None,
