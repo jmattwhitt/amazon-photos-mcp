@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -250,3 +251,40 @@ class TestSafeDfToList:
     def test_handles_list_input(self):
         data = [{"id": "a"}, {"id": "b"}, {"id": "c"}]
         assert mod._safe_df_to_list(data, max_results=2) == [{"id": "a"}, {"id": "b"}]
+
+
+class TestToolAnnotations:
+    """Verify every registered tool has appropriate annotations."""
+
+    def test_read_only_tools_have_read_only_hint(self) -> None:
+        from amazon_photos_mcp import _READ_ONLY_TOOLS, _tool_annotations
+        for name in _READ_ONLY_TOOLS:
+            ann = _tool_annotations(name)
+            assert ann.get("readOnlyHint") is True, f"{name} missing readOnlyHint"
+
+    def test_destructive_tools_have_destructive_hint(self) -> None:
+        from amazon_photos_mcp import _DESTRUCTIVE_TOOLS, _tool_annotations
+        for name in _DESTRUCTIVE_TOOLS:
+            ann = _tool_annotations(name)
+            assert ann.get("destructiveHint") is True, f"{name} missing destructiveHint"
+
+    def test_idempotent_tools_have_idempotent_hint(self) -> None:
+        from amazon_photos_mcp import _IDEMPOTENT_TOOLS, _tool_annotations
+        for name in _IDEMPOTENT_TOOLS:
+            ann = _tool_annotations(name)
+            assert ann.get("idempotentHint") is True, f"{name} missing idempotentHint"
+
+    def test_no_overlap_read_only_and_destructive(self) -> None:
+        from amazon_photos_mcp import _READ_ONLY_TOOLS, _DESTRUCTIVE_TOOLS
+        overlap = _READ_ONLY_TOOLS & _DESTRUCTIVE_TOOLS
+        assert not overlap, f"Tools in both sets: {overlap}"
+
+    def test_all_tool_names_are_valid(self) -> None:
+        """Every tool registered with mcp should have annotations defined."""
+        from amazon_photos_mcp import mcp, _tool_annotations
+
+        tools = asyncio.run(mcp._local_provider.list_tools())
+        for tool in tools:
+            name = tool.name
+            ann = _tool_annotations(name)
+            assert isinstance(ann, dict), f"Tool {name} has no annotations helper entry"
