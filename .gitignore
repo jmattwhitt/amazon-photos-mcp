@@ -14,3 +14,5 @@ coverage.xml
 log.log
 things.json
 cookie_log.txt
+.worktrees/
+.omc/
