@@ -132,15 +132,37 @@ def advanced_search(
     else:
         parts.append("type:(PHOTOS)")
 
+    import re
+
+    def _validate_date(d: str) -> str | None:
+        if not d:
+            return None
+        # Accept YYYYMMDD or YYYY-MM-DD; reject anything else
+        if re.match(r"^\d{8}$", d):
+            return d
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", d):
+            return d.replace("-", "")
+        return None
+
+    date_from_clean = _validate_date(date_from)
+    date_to_clean = _validate_date(date_to)
+
+    if (date_from and not date_from_clean) or (date_to and not date_to_clean):
+        return {
+            "error": True,
+            "code": "INVALID_ARGS",
+            "message": "Invalid date format. Use YYYY-MM-DD or YYYYMMDD.",
+        }
+
     # Date range — Amazon Photos uses createdDate:[YYYYMMDD TO YYYYMMDD] syntax
-    if date_from and date_to:
+    if date_from_clean and date_to_clean:
         parts.append(
-            f"createdDate:[{date_from.replace('-', '')} TO {date_to.replace('-', '')}]"
+            f"createdDate:[{date_from_clean} TO {date_to_clean}]"
         )
-    elif date_from:
-        parts.append(f"createdDate:[{date_from.replace('-', '')} TO]")
-    elif date_to:
-        parts.append(f"createdDate:[ TO {date_to.replace('-', '')}]")
+    elif date_from_clean:
+        parts.append(f"createdDate:[{date_from_clean} TO]")
+    elif date_to_clean:
+        parts.append(f"createdDate:[ TO {date_to_clean}]")
 
     # Things
     if things:

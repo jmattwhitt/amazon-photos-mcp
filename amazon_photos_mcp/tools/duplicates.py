@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -146,22 +145,7 @@ def find_near_duplicates(
 
     try:
         photo_ids = photos["id"].tolist()
-        try:
-            ap.download(photo_ids, out=str(temp_dir))
-        except TypeError:
-            import inspect
-            try:
-                sig = inspect.signature(ap.download)
-            except (ValueError, TypeError):
-                sig = None
-            if sig is not None and "out" in sig.parameters:
-                raise
-            original_dir = os.getcwd()
-            try:
-                os.chdir(str(temp_dir))
-                ap.download(photo_ids)
-            finally:
-                os.chdir(original_dir)
+        ap.download(photo_ids, out=str(temp_dir))
 
         for f in temp_dir.iterdir():
             if f.is_file():

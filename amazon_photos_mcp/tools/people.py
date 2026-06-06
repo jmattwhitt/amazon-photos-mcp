@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from amazon_photos_mcp import _get_client, _safe_df_to_result, _tool, _tool_annotations, mcp
+from amazon_photos_mcp import _get_client, _tool, _tool_annotations, mcp
 
 
 @mcp.tool(annotations=_tool_annotations("list_people"))

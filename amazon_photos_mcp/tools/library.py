@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from amazon_photos_mcp import (
     _AMAZON_COOKIE_PATH,
     _get_client,
-    _is_nan,
     _tool,
     _tool_annotations,
     mcp,
