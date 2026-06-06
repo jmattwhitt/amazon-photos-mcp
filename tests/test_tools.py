@@ -98,21 +98,25 @@ class TestValidateCookies:
 # ---------------------------------------------------------------------------
 
 class TestGetPhotos:
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.get_photos(max_results=5), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        result = mod.get_photos(max_results=5)
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
 
     def test_respects_max_results(self, mock_ap):
         mock_ap.photos.return_value = pd.DataFrame({"id": [f"n{i}" for i in range(50)]})
-        assert len(mod.get_photos(max_results=10)) <= 10
+        assert len(mod.get_photos(max_results=10)["items"]) <= 10
 
     def test_caps_at_200(self, mock_ap):
         mock_ap.photos.return_value = pd.DataFrame({"id": [f"n{i}" for i in range(500)]})
-        assert len(mod.get_photos(max_results=999)) <= 200
+        assert len(mod.get_photos(max_results=999)["items"]) <= 200
 
 
 class TestGetVideos:
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.get_videos(), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        result = mod.get_videos()
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +128,8 @@ class TestSearchPhotos:
         mod.search_photos("things:(beach)")
         mock_ap.query.assert_called_once_with("things:(beach)")
 
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.search_photos("test"), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        assert isinstance(mod.search_photos("test"), dict)
 
 
 # ---------------------------------------------------------------------------
@@ -156,14 +160,14 @@ class TestSearchByDate:
 # ---------------------------------------------------------------------------
 
 class TestListFolders:
-    def test_returns_list(self, mock_ap):
+    def test_returns_dict_with_items(self, mock_ap):
         result = mod.list_folders()
-        assert isinstance(result, list)
-        assert len(result) == 2
+        assert isinstance(result, dict)
+        assert len(result["items"]) == 2
 
     def test_folder_has_name(self, mock_ap):
         result = mod.list_folders()
-        assert result[0]["name"] in {"Vacation", "Family"}
+        assert result["items"][0]["name"] in {"Vacation", "Family"}
 
 
 class TestGetFolderTree:
@@ -182,18 +186,18 @@ class TestGetFolderTree:
 # ---------------------------------------------------------------------------
 
 class TestListPeople:
-    def test_returns_list_with_expected_fields(self, mock_ap):
+    def test_returns_dict_with_expected_fields(self, mock_ap):
         result = mod.list_people()
-        assert result[0]["name"] == "Alice"
-        assert result[0]["cluster_id"] == "cluster-abc"
+        assert result["items"][0]["name"] == "Alice"
+        assert result["items"][0]["cluster_id"] == "cluster-abc"
 
     def test_unnamed_clusters_labeled(self, mock_ap):
         result = mod.list_people()
-        assert any(p["name"] == "(unnamed)" for p in result)
+        assert any(p["name"] == "(unnamed)" for p in result["items"])
 
     def test_sorted_by_count_desc(self, mock_ap):
         result = mod.list_people()
-        counts = [p["count"] for p in result]
+        counts = [p["count"] for p in result["items"]]
         assert counts == sorted(counts, reverse=True)
 
 
@@ -260,14 +264,15 @@ class TestRestoreItems:
 
 
 class TestListRecentlyDeleted:
-    def test_returns_list(self, mock_ap):
+    def test_returns_dict_with_items(self, mock_ap):
         result = mod.list_recently_deleted()
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
 
     def test_returns_empty_when_trash_is_empty(self, mock_ap):
         mock_ap.trashed.return_value = pd.DataFrame()
         result = mod.list_recently_deleted()
-        assert result == []
+        assert result == {"items": [], "has_more": False, "total": 0}
 
     def test_filters_by_within_days(self, mock_ap):
         # Use unambiguous RFC-3339 strings far apart so cutoff math is clear
@@ -278,7 +283,7 @@ class TestListRecentlyDeleted:
             {"id": "new-node", "name": "new.jpg", "modifiedDate": recent_date},
         ])
         result = mod.list_recently_deleted(within_days=7)
-        ids = [r["id"] for r in result]
+        ids = [r["id"] for r in result["items"]]
         assert "new-node" in ids
         assert "old-node" not in ids
 
@@ -646,16 +651,16 @@ class TestGetAggregations:
 # ---------------------------------------------------------------------------
 
 class TestListAlbums:
-    def test_returns_list_from_dataframe(self, mock_ap):
-        """list_albums with a DataFrame result returns list of dicts."""
+    def test_returns_dict_from_dataframe(self, mock_ap):
+        """list_albums with a DataFrame result returns dict with items."""
         mock_ap.albums.return_value = pd.DataFrame([
             {"id": "album-1", "name": "Vacation", "nodeCount": 10},
             {"id": "album-2", "name": "Family", "nodeCount": 25},
         ])
         result = mod.list_albums(max_results=50)
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0]["name"] in {"Vacation", "Family"}
+        assert isinstance(result, dict)
+        assert len(result["items"]) == 2
+        assert result["items"][0]["name"] in {"Vacation", "Family"}
 
 
 # ---------------------------------------------------------------------------
@@ -999,8 +1004,8 @@ class TestSearchByThings:
         mod.search_by_things("beach")
         mock_ap.query.assert_called_once_with("type:(PHOTOS) things:(beach)")
 
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.search_by_things("park"), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        assert isinstance(mod.search_by_things("park"), dict)
 
     def test_custom_media_type(self, mock_ap):
         mod.search_by_things("cat", media_type="VIDEOS")
@@ -1085,3 +1090,44 @@ class TestDownloadForPipeline:
             result = mod.download_for_pipeline("beach", max_items=2)
         assert result["status"] == "ok"
         assert "output_dir" in result
+
+
+# ---------------------------------------------------------------------------
+# Pagination metadata
+# ---------------------------------------------------------------------------
+
+class TestPaginationMetadata:
+    def test_safe_df_to_result_marks_has_more_correctly(self) -> None:
+        import pandas as pd
+        from amazon_photos_mcp import _safe_df_to_result
+        df = pd.DataFrame([{"id": str(i), "name": f"photo{i}.jpg"} for i in range(10)])
+        result = _safe_df_to_result(df, max_results=5)
+        assert result["has_more"] is True
+        assert result["total"] == 10
+        assert len(result["items"]) == 5
+
+    def test_safe_df_to_result_no_truncation(self) -> None:
+        import pandas as pd
+        from amazon_photos_mcp import _safe_df_to_result
+        df = pd.DataFrame([{"id": "1", "name": "photo.jpg"}])
+        result = _safe_df_to_result(df, max_results=50)
+        assert result["has_more"] is False
+        assert result["total"] == 1
+
+    def test_safe_df_to_result_none(self) -> None:
+        from amazon_photos_mcp import _safe_df_to_result
+        result = _safe_df_to_result(None)
+        assert result == {"items": [], "has_more": False, "total": 0}
+
+    def test_get_photos_returns_dict_with_metadata(self) -> None:
+        from amazon_photos_mcp import get_photos
+        result = get_photos(max_results=1)
+        assert isinstance(result, dict)
+        assert "items" in result
+        assert "has_more" in result
+
+    def test_search_photos_returns_dict_with_metadata(self) -> None:
+        from amazon_photos_mcp import search_photos
+        result = search_photos("type:(PHOTOS)")
+        assert isinstance(result, dict)
+        assert "items" in result
