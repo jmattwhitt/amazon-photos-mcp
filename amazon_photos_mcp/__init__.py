@@ -206,15 +206,15 @@ def _normalize_cookies(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_cookies() -> dict[str, Any] | None:
-    raw = None
     env_cookies = os.environ.get("AMAZON_PHOTOS_COOKIES")
     if env_cookies:
-        raw = json.loads(env_cookies)
-    if raw is None and _AMAZON_COOKIE_PATH.exists():
-        raw = json.loads(_AMAZON_COOKIE_PATH.read_text())
-    if raw is None:
-        return None
-    return _normalize_cookies(raw)
+        return _normalize_cookies(json.loads(env_cookies))
+    from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+    cookies = load_encrypted_cookies(_AMAZON_COOKIE_PATH)
+    if cookies is not None:
+        return _normalize_cookies(cookies)
+    return None
 
 
 def _get_client(force_refresh: bool = False) -> Any:

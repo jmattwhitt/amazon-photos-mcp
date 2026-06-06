@@ -26,6 +26,7 @@ classifiers = [
     "Topic :: Multimedia :: Graphics",
 ]
 dependencies = [
+    "cryptography>=42.0.0",
     "fastmcp>=2.0.0",
     # Upstream amazon_photos has no stable releases — pin a known-good commit.
     # Remove allow-direct-references below before publishing to PyPI.
