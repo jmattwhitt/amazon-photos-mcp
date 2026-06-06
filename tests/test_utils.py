@@ -315,6 +315,7 @@ class TestRateLimiter:
 
     def test_wrap_http_errors_detects_429(self) -> None:
         from unittest.mock import MagicMock
+
         from amazon_photos_mcp import RateLimitError, _wrap_http_errors
         mock_client = MagicMock()
         mock_resp = MagicMock(status_code=429)
@@ -327,6 +328,7 @@ class TestRateLimiter:
 
     def test_wrap_http_errors_detects_503(self) -> None:
         from unittest.mock import MagicMock
+
         from amazon_photos_mcp import RateLimitError, _wrap_http_errors
         mock_client = MagicMock()
         mock_resp = MagicMock(status_code=503, headers={})
