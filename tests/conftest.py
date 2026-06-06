@@ -120,6 +120,12 @@ def mock_ap() -> MagicMock:
     ap.delete.return_value = MagicMock(spec=[])
     ap.trashed.return_value = pd.DataFrame()
 
+    # favorite / unfavorite / hide / unhide — no .json() by default (triggers fallback)
+    ap.favorite.return_value = MagicMock(spec=[])
+    ap.unfavorite.return_value = MagicMock(spec=[])
+    ap.hide.return_value = MagicMock(spec=[])
+    ap.unhide.return_value = MagicMock(spec=[])
+
     # download
     ap.download.return_value = None
 

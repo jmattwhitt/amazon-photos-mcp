@@ -382,6 +382,14 @@ class TestCookieEncryption:
         path.write_text("this is not valid json {{{")
         assert load_encrypted_cookies(path) is None
 
+    def test_load_encrypted_returns_none_for_corrupted_encrypted(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "bad_encrypted.json"
+        # AMCP header + garbage that looks like nonce+cipher+tag
+        path.write_bytes(b"AMCP" + b"\x00" * 40)
+        assert load_encrypted_cookies(path) is None
+
     def test_machine_key_is_deterministic(self) -> None:
         from amazon_photos_mcp.crypto import _machine_key
 
@@ -389,3 +397,41 @@ class TestCookieEncryption:
         k2 = _machine_key()
         assert k1 == k2
         assert len(k1) == 32
+
+
+# ---------------------------------------------------------------------------
+# Perceptual hash (pHash)
+# ---------------------------------------------------------------------------
+
+
+class TestPerceptualHash:
+    def test_hamming_distance_identical(self) -> None:
+        from amazon_photos_mcp.phash import hamming_distance
+        assert hamming_distance("a0b1c2d3e4f5a0b1", "a0b1c2d3e4f5a0b1") == 0
+
+    def test_hamming_distance_different(self) -> None:
+        from amazon_photos_mcp.phash import hamming_distance
+        dist = hamming_distance("a" * 16, "b" * 16)
+        assert dist > 0
+
+    def test_hamming_distance_different_lengths(self) -> None:
+        from amazon_photos_mcp.phash import hamming_distance
+        assert hamming_distance("a", "bb") == 8
+
+    def test_find_near_duplicates_empty(self) -> None:
+        from amazon_photos_mcp.phash import find_near_duplicates
+        groups = find_near_duplicates({})
+        assert groups == []
+
+    def test_find_near_duplicates_no_matches(self) -> None:
+        from amazon_photos_mcp.phash import find_near_duplicates
+        hashes = {"id1": "a" * 16, "id2": "f" * 16}
+        groups = find_near_duplicates(hashes, threshold=2)
+        assert groups == []
+
+    def test_compute_phash_returns_none_for_non_image(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.phash import compute_phash
+        bad_file = tmp_path / "not_an_image.txt"
+        bad_file.write_text("hello")
+        result = compute_phash(bad_file)
+        assert result is None
