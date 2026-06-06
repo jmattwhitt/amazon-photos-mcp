@@ -1099,6 +1099,7 @@ class TestDownloadForPipeline:
 class TestPaginationMetadata:
     def test_safe_df_to_result_marks_has_more_correctly(self) -> None:
         import pandas as pd
+
         from amazon_photos_mcp import _safe_df_to_result
         df = pd.DataFrame([{"id": str(i), "name": f"photo{i}.jpg"} for i in range(10)])
         result = _safe_df_to_result(df, max_results=5)
@@ -1108,6 +1109,7 @@ class TestPaginationMetadata:
 
     def test_safe_df_to_result_no_truncation(self) -> None:
         import pandas as pd
+
         from amazon_photos_mcp import _safe_df_to_result
         df = pd.DataFrame([{"id": "1", "name": "photo.jpg"}])
         result = _safe_df_to_result(df, max_results=50)
