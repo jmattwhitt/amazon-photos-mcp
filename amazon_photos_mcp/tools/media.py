@@ -112,16 +112,37 @@ def get_thumbnail(node_id: str, max_size: int = 0) -> dict[str, Any]:
         return {"node_id": node_id, "thumbnail": None, "error": "Could not resolve download URL."}
 
     try:
-        session = getattr(ap, "_session", None)
-        if session is not None:
-            r = session.get(url, timeout=30, follow_redirects=True)
-        else:
-            r = httpx.get(url, timeout=30, follow_redirects=True)
-        r.raise_for_status()
+        http_client = getattr(ap, "client", None)
+        s = http_client if http_client is not None else httpx.Client()
+
+        with s.stream("GET", url, timeout=30) as r:
+            r.raise_for_status()
+
+            ctype = r.headers.get("Content-Type", "")
+            if "video" in ctype:
+                return {
+                    "node_id": node_id,
+                    "thumbnail_base64": None,
+                    "url": url,
+                    "fallback": "Cannot generate thumbnail for video files. Use the URL to view.",
+                }
+
+            size_limit = 50 * 1024 * 1024  # 50 MB
+            content = r.read()
+            if len(content) > size_limit:
+                return {
+                    "node_id": node_id,
+                    "thumbnail_base64": None,
+                    "url": url,
+                    "fallback": (
+                        f"Image too large to generate thumbnail "
+                        f"({len(content) / 1024 / 1024:.1f} MB). Use the URL to view."
+                    ),
+                }
 
         from PIL import Image
 
-        img = Image.open(stdlib_io.BytesIO(r.content))
+        img = Image.open(stdlib_io.BytesIO(content))
         img.thumbnail((max_size, max_size), Image.LANCZOS)
 
         buf = stdlib_io.BytesIO()
@@ -159,7 +180,11 @@ def get_download_progress() -> dict[str, Any]:
     if not progress_path:
         return {
             "status": "not_configured",
-            "message": "No progress file configured. Set AMAZON_PHOTOS_DOWNLOAD_PROGRESS env var or pass progress_file to download_library.",
+            "message": (
+                "No progress file configured. "
+                "Set AMAZON_PHOTOS_DOWNLOAD_PROGRESS env var "
+                "or pass progress_file to download_library."
+            ),
         }
     p = Path(progress_path)
     if not p.exists():
@@ -238,24 +263,7 @@ def download(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    try:
-        ap.download(ids, out=str(out))
-    except TypeError:
-        # Upstream library may not accept `out` parameter (version-dependent).
-        # Only fall back to CWD change if the signature truly lacks it.
-        import inspect
-        try:
-            sig = inspect.signature(ap.download)
-        except (ValueError, TypeError):
-            sig = None
-        if sig is not None and "out" in sig.parameters:
-            raise
-        original_dir = os.getcwd()
-        try:
-            os.chdir(str(out))
-            ap.download(ids)
-        finally:
-            os.chdir(original_dir)
+    ap.download(ids, out=str(out))
 
     return {
         "status": "ok",
@@ -372,21 +380,6 @@ def download_library(
 
         try:
             ap.download(batch, out=str(batch_out))
-            downloaded += len(batch)
-        except TypeError:
-            import inspect
-            try:
-                sig = inspect.signature(ap.download)
-            except (ValueError, TypeError):
-                sig = None
-            if sig is not None and "out" in sig.parameters:
-                raise
-            original_dir = os.getcwd()
-            try:
-                os.chdir(str(batch_out))
-                ap.download(batch)
-            finally:
-                os.chdir(original_dir)
             downloaded += len(batch)
         except Exception as e:
             failed.extend(batch)

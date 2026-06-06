@@ -1,22 +1,41 @@
 """Amazon Photos MCP tools — re-exported from individual modules."""
 
+from amazon_photos_mcp.tools.albums import (
+    add_to_album,
+    create_album,
+    list_albums,
+    remove_from_album,
+)
 from amazon_photos_mcp.tools.connection import (
     check_connection,
     refresh_client,
     validate_cookies,
 )
-from amazon_photos_mcp.tools.storage import (
-    get_aggregations,
-    get_storage_usage,
+from amazon_photos_mcp.tools.duplicates import (
+    find_duplicates,
+    find_near_duplicates,
+    keep_specific,
+    preview_duplicate_group,
+    trash_duplicates,
+    trash_near_duplicates,
 )
-from amazon_photos_mcp.tools.search import (
-    advanced_search,
-    get_photos,
-    get_videos,
-    search_by_date,
-    search_by_person,
-    search_by_things,
-    search_photos,
+from amazon_photos_mcp.tools.favorites_hidden import (
+    favorite_items,
+    hide_items,
+    set_favorite,
+    set_hidden,
+    unfavorite_items,
+    unhide_items,
+)
+from amazon_photos_mcp.tools.folders import (
+    get_folder_tree,
+    list_folders,
+)
+from amazon_photos_mcp.tools.library import (
+    check_db_integrity,
+    export_metadata,
+    find_timeline_gaps,
+    get_library_stats,
 )
 from amazon_photos_mcp.tools.media import (
     download,
@@ -29,28 +48,23 @@ from amazon_photos_mcp.tools.media import (
     get_photo_url,
     get_thumbnail,
 )
-from amazon_photos_mcp.tools.albums import (
-    add_to_album,
-    create_album,
-    list_albums,
-    remove_from_album,
-)
-from amazon_photos_mcp.tools.folders import (
-    get_folder_tree,
-    list_folders,
-)
 from amazon_photos_mcp.tools.people import (
     list_people,
     merge_people,
     name_person,
 )
-from amazon_photos_mcp.tools.favorites_hidden import (
-    favorite_items,
-    hide_items,
-    set_favorite,
-    set_hidden,
-    unfavorite_items,
-    unhide_items,
+from amazon_photos_mcp.tools.search import (
+    advanced_search,
+    get_photos,
+    get_videos,
+    search_by_date,
+    search_by_person,
+    search_by_things,
+    search_photos,
+)
+from amazon_photos_mcp.tools.storage import (
+    get_aggregations,
+    get_storage_usage,
 )
 from amazon_photos_mcp.tools.trash import (
     list_recently_deleted,
@@ -62,20 +76,6 @@ from amazon_photos_mcp.tools.trash import (
 from amazon_photos_mcp.tools.upload import (
     upload_file,
     upload_folder,
-)
-from amazon_photos_mcp.tools.duplicates import (
-    find_duplicates,
-    find_near_duplicates,
-    keep_specific,
-    preview_duplicate_group,
-    trash_duplicates,
-    trash_near_duplicates,
-)
-from amazon_photos_mcp.tools.library import (
-    check_db_integrity,
-    export_metadata,
-    find_timeline_gaps,
-    get_library_stats,
 )
 
 __all__ = [

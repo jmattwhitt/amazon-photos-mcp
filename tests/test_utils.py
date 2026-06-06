@@ -320,10 +320,10 @@ class TestRateLimiter:
         mock_client = MagicMock()
         mock_resp = MagicMock(status_code=429)
         mock_resp.headers = {"Retry-After": "45"}
-        mock_client._session.request.return_value = mock_resp
+        mock_client.client.request.return_value = mock_resp
         _wrap_http_errors(mock_client)
         with pytest.raises(RateLimitError) as exc_info:
-            mock_client._session.request("GET", "https://example.com")
+            mock_client.client.request("GET", "https://example.com")
         assert exc_info.value.retry_after == 45
 
     def test_wrap_http_errors_detects_503(self) -> None:
@@ -332,10 +332,10 @@ class TestRateLimiter:
         from amazon_photos_mcp import RateLimitError, _wrap_http_errors
         mock_client = MagicMock()
         mock_resp = MagicMock(status_code=503, headers={})
-        mock_client._session.request.return_value = mock_resp
+        mock_client.client.request.return_value = mock_resp
         _wrap_http_errors(mock_client)
         with pytest.raises(RateLimitError) as exc_info:
-            mock_client._session.request("GET", "https://example.com")
+            mock_client.client.request("GET", "https://example.com")
         assert exc_info.value.retry_after == 30
 
 
@@ -383,12 +383,28 @@ class TestCookieEncryption:
         assert load_encrypted_cookies(path) is None
 
     def test_load_encrypted_returns_none_for_corrupted_encrypted(self, tmp_path: Path) -> None:
-        from amazon_photos_mcp.crypto import load_encrypted_cookies
+        from amazon_photos_mcp.crypto import DecryptionError, load_encrypted_cookies
 
         path = tmp_path / "bad_encrypted.json"
         # AMCP header + garbage that looks like nonce+cipher+tag
         path.write_bytes(b"AMCP" + b"\x00" * 40)
-        assert load_encrypted_cookies(path) is None
+        import pytest
+        with pytest.raises(DecryptionError):
+            load_encrypted_cookies(path)
+
+    def test_load_encrypted_propagates_os_error_not_decryption_error(self, tmp_path: Path) -> None:
+        """Permission/disk errors should return None, not raise DecryptionError."""
+        from unittest.mock import patch
+
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "unreadable.json"
+        path.write_text("{}")
+        # Simulate a disk/permission error during read
+        with patch.object(path.__class__, "read_bytes", side_effect=OSError("Permission denied")):
+            # Should return None (swallowed by OSError handler), NOT raise DecryptionError
+            result = load_encrypted_cookies(path)
+            assert result is None
 
     def test_machine_key_is_deterministic(self) -> None:
         from amazon_photos_mcp.crypto import _machine_key

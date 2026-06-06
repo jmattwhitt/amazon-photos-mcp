@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,17 @@ def upload_file(file_path: str) -> dict[str, Any]:
     ap = _get_client()
     tmp_dir = tempfile.mkdtemp(prefix="ap_upload_")
     try:
-        shutil.copy2(str(path), os.path.join(tmp_dir, path.name))
+        dest = os.path.join(tmp_dir, path.name)
+        if sys.platform != "win32":
+            try:
+                # Try hard linking first to avoid duplicating large files on disk
+                os.link(str(path), dest)
+            except OSError:
+                # Fall back to copying if cross-device link or other error
+                shutil.copy2(str(path), dest)
+        else:
+            # Windows: os.link requires admin; skip straight to copy
+            shutil.copy2(str(path), dest)
         result = ap.upload(tmp_dir)
         return {
             "status": "ok",

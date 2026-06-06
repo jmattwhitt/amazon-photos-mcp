@@ -390,22 +390,7 @@ class TestDownloadFiles:
             result = mod.download_files(["node-001"])
         assert "output_dir" in result
 
-    def test_typeerror_fallback_cwd_change(self, mock_ap, tmp_path):
-        """When ap.download raises TypeError (no out= kwarg), fall back to cwd change."""
-        out = str(tmp_path / "typeerr_dl")
-        original_cwd = os.getcwd()
-        # First call (with out= kwarg) raises TypeError;
-        # second call (without out=) succeeds.
-        mock_ap.download.side_effect = [TypeError("unexpected kwarg"), None]
-        result = mod.download_files(["node-001"], output_dir=out)
-        assert result["status"] == "ok"
-        assert result["output_dir"] == out
-        assert mock_ap.download.call_count == 2
-        # Second call should have been without the out= kwarg
-        second_call_args = mock_ap.download.call_args_list[1]
-        assert "out" not in second_call_args.kwargs
-        # The finally: os.chdir(original_dir) should restore the working directory
-        assert os.getcwd() == original_cwd
+    # (typeerror_fallback removed)
 
 
 # ---------------------------------------------------------------------------
@@ -427,12 +412,7 @@ class TestDownloadByDate:
         assert result["status"] == "no_results"
         assert result["count"] == 0
 
-    def test_download_typeerror_fallback(self, mock_ap, tmp_path):
-        """download_by_date with TypeError fallback for cwd change."""
-        out = str(tmp_path / "date_typeerr")
-        mock_ap.download.side_effect = [TypeError("unexpected kwarg"), None]
-        result = mod.download_by_date(year=2024, output_dir=out)
-        assert result["status"] == "ok"
+    # (typeerror_fallback removed)
 
 
 # ---------------------------------------------------------------------------
@@ -1184,12 +1164,7 @@ class TestDownloadForPipeline:
         assert result["status"] == "no_results"
         assert result["count"] == 0
 
-    def test_typeerror_fallback(self, mock_ap, tmp_path):
-        out = str(tmp_path / "pipeline_tf")
-        mock_ap.download.side_effect = [TypeError("unexpected"), None]
-        result = mod.download_for_pipeline("test", output_dir=out, max_items=5)
-        assert result["status"] == "ok"
-        assert mock_ap.download.call_count == 2
+    # (typeerror_fallback removed)
 
     def test_default_output_dir_uses_pipeline_path(self, mock_ap, tmp_path):
         with patch("amazon_photos_mcp.PIPELINE_DEFAULT_DIR", str(tmp_path)):
@@ -1242,12 +1217,7 @@ class TestDownloadUnified:
         assert result["status"] == "no_results"
         assert result["count"] == 0
 
-    def test_typeerror_fallback(self, mock_ap, tmp_path):
-        out = str(tmp_path / "unified_typeerr")
-        mock_ap.download.side_effect = [TypeError("unexpected"), None]
-        result = mod.download(node_ids=["node-001"], output_dir=out)
-        assert result["status"] == "ok"
-        assert mock_ap.download.call_count == 2
+    # (typeerror_fallback removed)
 
 
 # ---------------------------------------------------------------------------

@@ -225,9 +225,13 @@ def _load_cookies() -> dict[str, Any] | None:
     env_cookies = os.environ.get("AMAZON_PHOTOS_COOKIES")
     if env_cookies:
         return _normalize_cookies(json.loads(env_cookies))
-    from amazon_photos_mcp.crypto import load_encrypted_cookies
+    from amazon_photos_mcp.crypto import DecryptionError, load_encrypted_cookies
 
-    cookies = load_encrypted_cookies(_AMAZON_COOKIE_PATH)
+    try:
+        cookies = load_encrypted_cookies(_AMAZON_COOKIE_PATH)
+    except DecryptionError as e:
+        raise AuthenticationError("Cookie file exists but decryption failed. You may need to re-authenticate.") from e
+
     if cookies is not None:
         return _normalize_cookies(cookies)
     return None
@@ -283,11 +287,11 @@ def _get_client(force_refresh: bool = False) -> Any:
 
 
 def _configure_http_pooling(client: Any) -> None:
-    """Enable connection pooling on the httpx session for reduced latency."""
-    if hasattr(client, "_session"):
-        session = client._session
-        if hasattr(session, "_transport") and hasattr(session._transport, "_pool"):
-            pool = session._transport._pool
+    """Enable connection pooling on the httpx client for reduced latency."""
+    if hasattr(client, "client"):
+        http_client = client.client
+        if hasattr(http_client, "_transport") and hasattr(http_client._transport, "_pool"):
+            pool = http_client._transport._pool
             pool._keepalive_expiry = 30.0
             pool._max_keepalive_connections = 5
             pool._max_connections = 10
@@ -296,12 +300,13 @@ def _configure_http_pooling(client: Any) -> None:
 def _wrap_http_errors(client: Any) -> None:
     from amazon_photos_mcp.rate_limiter import check_rate_limit
 
-    if hasattr(client, "_session"):
-        session = client._session
-        orig_request = session.request
+    if hasattr(client, "client"):
+        http_client = client.client
+        orig_request = http_client.request
 
         def _patched_request(method: str, url: str, **kwargs: Any) -> Any:
             check_rate_limit()
+            kwargs.setdefault("timeout", 30.0)
             resp = orig_request(method, url, **kwargs)
             if hasattr(resp, "status_code"):
                 if resp.status_code == 429:
@@ -312,7 +317,7 @@ def _wrap_http_errors(client: Any) -> None:
                     raise RateLimitError(retry_after=30)
             return resp
 
-        session.request = _patched_request
+        http_client.request = _patched_request
 
 
 # ---------------------------------------------------------------------------
@@ -396,8 +401,8 @@ from amazon_photos_mcp.tools import (  # noqa: E402, F401 — intentional late i
     get_exif_data,
     get_folder_tree,
     get_library_stats,
-    get_photos,
     get_photo_url,
+    get_photos,
     get_storage_usage,
     get_thumbnail,
     get_videos,

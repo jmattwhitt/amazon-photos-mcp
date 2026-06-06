@@ -15,7 +15,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+
+class DecryptionError(Exception):
+    """Raised when the cookie file exists but cannot be decrypted."""
+    pass
 
 _MACHINE_KEY_CACHE: bytes | None = None
 
@@ -99,9 +105,9 @@ def load_encrypted_cookies(path: Path) -> dict[str, Any] | None:
             return json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, ValueError, OSError):
         return None
-    except Exception:
-        # _decrypt may raise InvalidTag from cryptography on corrupted payloads
-        return None
+    except InvalidTag as e:
+        # _decrypt raises InvalidTag on corrupted or tampered payloads
+        raise DecryptionError("Failed to decrypt cookie file. The encryption key may have changed.") from e
 
 
 def save_encrypted_cookies(path: Path, cookies: dict[str, Any]) -> None:

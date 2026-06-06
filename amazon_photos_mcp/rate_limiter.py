@@ -35,11 +35,18 @@ class TokenBucket:
             return min(self._capacity, self._tokens + elapsed * self._rate)
 
 
-_global_bucket = TokenBucket(rate=5.0, capacity=10)
+_global_bucket: TokenBucket | None = None
 
 
 def check_rate_limit() -> None:
     """Check and consume a rate limit token. Raises RateLimitError if exceeded."""
+    global _global_bucket
+    if _global_bucket is None:
+        from amazon_photos_mcp.config import get_config
+        rate = float(get_config("rate_limit", default=5.0))
+        cap = int(get_config("rate_capacity", default=10))
+        _global_bucket = TokenBucket(rate=rate, capacity=cap)
+
     from amazon_photos_mcp import RateLimitError
     if not _global_bucket.consume(1):
         raise RateLimitError(retry_after=15)
