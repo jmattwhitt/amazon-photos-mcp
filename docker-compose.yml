@@ -1,0 +1,28 @@
+# Docker Compose for amazon-photos-mcp development
+# MCP servers use stdio — this is for build/testing, not daemonized running.
+# Usage: docker compose build && docker compose run mcp
+
+version: "3.8"
+
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: amazon-photos-mcp:latest
+    volumes:
+      # Mount your cookies so the MCP server can authenticate
+      - ~/.config/amazon-photos-mcp:/home/mcp/.config/amazon-photos-mcp
+    environment:
+      - AMAZON_PHOTOS_LOG_LEVEL=INFO
+      # Optional: point to an existing parquet DB
+      # - AMAZON_PHOTOS_DB=/home/mcp/.config/amazon-photos-mcp/ap.parquet
+    stdin_open: true
+    # MCP servers are started by the MCP client, not via compose up
+    # The image can be used as a transport target in MCP client config:
+    #   {
+    #     "amazon-photos": {
+    #       "command": "docker",
+    #       "args": ["run", "-i", "--rm", "amazon-photos-mcp"]
+    #     }
+    #   }

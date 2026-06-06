@@ -48,7 +48,7 @@ class TestCheckConnection:
 
 class TestRefreshClient:
     def test_resets_and_reconnects(self, mock_ap):
-        with patch("amazon_photos_mcp._get_client", return_value=mock_ap):
+        with patch("amazon_photos_mcp.tools.connection._get_client", return_value=mock_ap):
             result = mod.refresh_client()
         assert result["status"] == "connected"
 
@@ -171,14 +171,18 @@ class TestListFolders:
 
 
 class TestGetFolderTree:
-    def test_returns_string(self, mock_ap):
+    def test_returns_dict_with_tree_key(self, mock_ap):
         mock_ap.print_tree.side_effect = lambda: print("root\n  └─ Vacation")
-        assert isinstance(mod.get_folder_tree(), str)
+        result = mod.get_folder_tree()
+        assert isinstance(result, dict)
+        assert "tree" in result
+        assert "Vacation" in result["tree"]
 
     def test_fallback_when_nothing_printed(self, mock_ap):
         mock_ap.print_tree.return_value = None
         result = mod.get_folder_tree()
-        assert isinstance(result, str)
+        assert isinstance(result, dict)
+        assert "tree" in result
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +325,7 @@ class TestListRecentlyDeleted:
         assert isinstance(result["items"], list)
 
     def test_delegates_to_list_trashed(self, mock_ap):
-        with patch.object(mod, "list_trashed") as mock_lt:
+        with patch("amazon_photos_mcp.tools.trash.list_trashed") as mock_lt:
             mock_lt.return_value = {"items": [], "has_more": False, "total": 0}
             result = mod.list_recently_deleted(within_days=14)
             mock_lt.assert_called_once_with(within_days=14)
