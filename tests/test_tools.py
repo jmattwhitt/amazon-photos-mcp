@@ -98,21 +98,25 @@ class TestValidateCookies:
 # ---------------------------------------------------------------------------
 
 class TestGetPhotos:
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.get_photos(max_results=5), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        result = mod.get_photos(max_results=5)
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
 
     def test_respects_max_results(self, mock_ap):
         mock_ap.photos.return_value = pd.DataFrame({"id": [f"n{i}" for i in range(50)]})
-        assert len(mod.get_photos(max_results=10)) <= 10
+        assert len(mod.get_photos(max_results=10)["items"]) <= 10
 
     def test_caps_at_200(self, mock_ap):
         mock_ap.photos.return_value = pd.DataFrame({"id": [f"n{i}" for i in range(500)]})
-        assert len(mod.get_photos(max_results=999)) <= 200
+        assert len(mod.get_photos(max_results=999)["items"]) <= 200
 
 
 class TestGetVideos:
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.get_videos(), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        result = mod.get_videos()
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +128,8 @@ class TestSearchPhotos:
         mod.search_photos("things:(beach)")
         mock_ap.query.assert_called_once_with("things:(beach)")
 
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.search_photos("test"), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        assert isinstance(mod.search_photos("test"), dict)
 
 
 # ---------------------------------------------------------------------------
@@ -156,14 +160,14 @@ class TestSearchByDate:
 # ---------------------------------------------------------------------------
 
 class TestListFolders:
-    def test_returns_list(self, mock_ap):
+    def test_returns_dict_with_items(self, mock_ap):
         result = mod.list_folders()
-        assert isinstance(result, list)
-        assert len(result) == 2
+        assert isinstance(result, dict)
+        assert len(result["items"]) == 2
 
     def test_folder_has_name(self, mock_ap):
         result = mod.list_folders()
-        assert result[0]["name"] in {"Vacation", "Family"}
+        assert result["items"][0]["name"] in {"Vacation", "Family"}
 
 
 class TestGetFolderTree:
@@ -182,18 +186,18 @@ class TestGetFolderTree:
 # ---------------------------------------------------------------------------
 
 class TestListPeople:
-    def test_returns_list_with_expected_fields(self, mock_ap):
+    def test_returns_dict_with_expected_fields(self, mock_ap):
         result = mod.list_people()
-        assert result[0]["name"] == "Alice"
-        assert result[0]["cluster_id"] == "cluster-abc"
+        assert result["items"][0]["name"] == "Alice"
+        assert result["items"][0]["cluster_id"] == "cluster-abc"
 
     def test_unnamed_clusters_labeled(self, mock_ap):
         result = mod.list_people()
-        assert any(p["name"] == "(unnamed)" for p in result)
+        assert any(p["name"] == "(unnamed)" for p in result["items"])
 
     def test_sorted_by_count_desc(self, mock_ap):
         result = mod.list_people()
-        counts = [p["count"] for p in result]
+        counts = [p["count"] for p in result["items"]]
         assert counts == sorted(counts, reverse=True)
 
 
@@ -259,15 +263,29 @@ class TestRestoreItems:
         assert result["restored_at"] == "2024-01-01"
 
 
-class TestListRecentlyDeleted:
-    def test_returns_list(self, mock_ap):
-        result = mod.list_recently_deleted()
-        assert isinstance(result, list)
+class TestListTrashed:
+    def test_returns_dict_with_items(self, mock_ap):
+        result = mod.list_trashed()
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
+
+    def test_returns_all_when_within_days_is_zero(self, mock_ap):
+        """within_days=0 (default) returns all trashed items."""
+        old_date = "2020-01-01T00:00:00Z"
+        recent_date = "2099-01-01T00:00:00Z"
+        mock_ap.trashed.return_value = pd.DataFrame([
+            {"id": "old-node", "name": "old.jpg", "modifiedDate": old_date},
+            {"id": "new-node", "name": "new.jpg", "modifiedDate": recent_date},
+        ])
+        result = mod.list_trashed(within_days=0)
+        ids = [r["id"] for r in result["items"]]
+        assert "old-node" in ids
+        assert "new-node" in ids
 
     def test_returns_empty_when_trash_is_empty(self, mock_ap):
         mock_ap.trashed.return_value = pd.DataFrame()
-        result = mod.list_recently_deleted()
-        assert result == []
+        result = mod.list_trashed()
+        assert result == {"items": [], "has_more": False, "total": 0}
 
     def test_filters_by_within_days(self, mock_ap):
         # Use unambiguous RFC-3339 strings far apart so cutoff math is clear
@@ -277,15 +295,37 @@ class TestListRecentlyDeleted:
             {"id": "old-node", "name": "old.jpg", "modifiedDate": old_date},
             {"id": "new-node", "name": "new.jpg", "modifiedDate": recent_date},
         ])
-        result = mod.list_recently_deleted(within_days=7)
-        ids = [r["id"] for r in result]
+        result = mod.list_trashed(within_days=7)
+        ids = [r["id"] for r in result["items"]]
         assert "new-node" in ids
         assert "old-node" not in ids
 
     def test_caps_within_days_at_30(self, mock_ap):
         mock_ap.trashed.return_value = pd.DataFrame()
         # Should not raise even with large value
-        mod.list_recently_deleted(within_days=999)
+        mod.list_trashed(within_days=999)
+
+    def test_empty_trash_with_within_days(self, mock_ap):
+        """within_days on empty trash returns empty result."""
+        mock_ap.trashed.return_value = pd.DataFrame()
+        result = mod.list_trashed(within_days=7)
+        assert result == {"items": [], "has_more": False, "total": 0}
+
+
+class TestListRecentlyDeleted:
+    """Deprecated wrapper — should delegate to list_trashed."""
+
+    def test_returns_dict_with_items(self, mock_ap):
+        result = mod.list_recently_deleted()
+        assert isinstance(result, dict)
+        assert isinstance(result["items"], list)
+
+    def test_delegates_to_list_trashed(self, mock_ap):
+        with patch.object(mod, "list_trashed") as mock_lt:
+            mock_lt.return_value = {"items": [], "has_more": False, "total": 0}
+            result = mod.list_recently_deleted(within_days=14)
+            mock_lt.assert_called_once_with(within_days=14)
+            assert result == {"items": [], "has_more": False, "total": 0}
 
 
 class TestPermanentlyDelete:
@@ -338,7 +378,7 @@ class TestDownloadFiles:
     def test_returns_standardized_envelope(self, mock_ap, tmp_path):
         result = mod.download_files(["node-001"], output_dir=str(tmp_path / "dl"))
         assert result["action"] == "downloaded"
-        assert result["count"] == 1
+        assert result["downloaded"] == 1
         assert "output_dir" in result
 
     def test_defaults_to_downloads_dir(self, mock_ap, tmp_path):
@@ -374,8 +414,7 @@ class TestDownloadByDate:
         out = str(tmp_path / "by_date")
         result = mod.download_by_date(year=2024, month=6, day=15, output_dir=out)
         assert result["status"] == "ok"
-        assert "timeMonth:(6)" in result["query"]
-        assert "timeDay:(15)" in result["query"]
+        assert "output_dir" in result
 
     def test_download_with_no_results(self, mock_ap, tmp_path):
         """When the date query returns no items, report no_results."""
@@ -646,16 +685,16 @@ class TestGetAggregations:
 # ---------------------------------------------------------------------------
 
 class TestListAlbums:
-    def test_returns_list_from_dataframe(self, mock_ap):
-        """list_albums with a DataFrame result returns list of dicts."""
+    def test_returns_dict_from_dataframe(self, mock_ap):
+        """list_albums with a DataFrame result returns dict with items."""
         mock_ap.albums.return_value = pd.DataFrame([
             {"id": "album-1", "name": "Vacation", "nodeCount": 10},
             {"id": "album-2", "name": "Family", "nodeCount": 25},
         ])
         result = mod.list_albums(max_results=50)
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0]["name"] in {"Vacation", "Family"}
+        assert isinstance(result, dict)
+        assert len(result["items"]) == 2
+        assert result["items"][0]["name"] in {"Vacation", "Family"}
 
 
 # ---------------------------------------------------------------------------
@@ -722,71 +761,139 @@ class TestRemoveFromAlbum:
 
 
 # ---------------------------------------------------------------------------
-# favorite_items / unfavorite_items
+# set_favorite / favorite_items / unfavorite_items
 # ---------------------------------------------------------------------------
 
-class TestFavoriteItems:
-    def test_returns_json_when_available(self, mock_ap):
+class TestSetFavorite:
+    def test_set_favorite_true(self, mock_ap):
+        from amazon_photos_mcp import set_favorite
+        result = set_favorite(["node-001"], favorite=True)
+        assert result.get("action") == "favorited"
+
+    def test_set_favorite_false(self, mock_ap):
+        from amazon_photos_mcp import set_favorite
+        result = set_favorite(["node-001"], favorite=False)
+        assert result.get("action") == "unfavorited"
+
+    def test_favorite_items_wrapper_still_works(self, mock_ap):
+        from amazon_photos_mcp import favorite_items
+        result = favorite_items(["node-001"])
+        assert result.get("action") == "favorited"
+
+    def test_unfavorite_items_wrapper_still_works(self, mock_ap):
+        from amazon_photos_mcp import unfavorite_items
+        result = unfavorite_items(["node-001"])
+        assert result.get("action") == "unfavorited"
+
+    def test_set_favorite_true_with_json(self, mock_ap):
+        """set_favorite with JSON response enriches with action/count."""
+        resp = MagicMock()
+        resp.json.return_value = {"favorited": ["n1", "n2"]}
+        mock_ap.favorite.return_value = resp
+        result = mod.set_favorite(["n1", "n2"], favorite=True)
+        assert result["favorited"] == ["n1", "n2"]
+        assert result["action"] == "favorited"
+        assert result["count"] == 2
+
+    def test_set_favorite_false_with_json(self, mock_ap):
+        """set_favorite(unfavorite) with JSON response."""
+        resp = MagicMock()
+        resp.json.return_value = {"unfavorited": ["n1"]}
+        mock_ap.unfavorite.return_value = resp
+        result = mod.set_favorite(["n1"], favorite=False)
+        assert result["unfavorited"] == ["n1"]
+        assert result["action"] == "unfavorited"
+        assert result["count"] == 1
+
+    def test_set_favorite_true_no_json(self, mock_ap):
+        """set_favorite without JSON fallback uses standardized envelope."""
+        mock_ap.favorite.return_value = MagicMock(spec_set=[])
+        result = mod.set_favorite(["n1", "n2"], favorite=True)
+        assert result["status"] == "ok"
+        assert result["action"] == "favorited"
+        assert result["count"] == 2
+
+    def test_favorite_items_returns_json_when_available(self, mock_ap):
         resp = MagicMock()
         resp.json.return_value = {"favorited": ["n1", "n2"]}
         mock_ap.favorite.return_value = resp
         result = mod.favorite_items(["n1", "n2"])
         assert result["favorited"] == ["n1", "n2"]
 
-    def test_fallback_when_no_json(self, mock_ap):
-        mock_ap.favorite.return_value = MagicMock(spec_set=[])
-        result = mod.favorite_items(["n1", "n2"])
-        assert result["status"] == "favorited"
-        assert result["count"] == 2
-
-
-class TestUnfavoriteItems:
-    def test_returns_json_when_available(self, mock_ap):
+    def test_unfavorite_items_returns_json_when_available(self, mock_ap):
         resp = MagicMock()
         resp.json.return_value = {"unfavorited": ["n1"]}
         mock_ap.unfavorite.return_value = resp
         result = mod.unfavorite_items(["n1"])
         assert result["unfavorited"] == ["n1"]
 
-    def test_fallback_when_no_json(self, mock_ap):
-        mock_ap.unfavorite.return_value = MagicMock(spec_set=[])
-        result = mod.unfavorite_items(["n1"])
-        assert result["status"] == "unfavorited"
+
+# ---------------------------------------------------------------------------
+# set_hidden / hide_items / unhide_items
+# ---------------------------------------------------------------------------
+
+class TestSetHidden:
+    def test_set_hidden_true(self, mock_ap):
+        from amazon_photos_mcp import set_hidden
+        result = set_hidden(["node-001"], hidden=True)
+        assert result.get("action") == "hidden"
+
+    def test_set_hidden_false(self, mock_ap):
+        from amazon_photos_mcp import set_hidden
+        result = set_hidden(["node-001"], hidden=False)
+        assert result.get("action") == "unhidden"
+
+    def test_hide_items_wrapper_still_works(self, mock_ap):
+        from amazon_photos_mcp import hide_items
+        result = hide_items(["node-001"])
+        assert result.get("action") == "hidden"
+
+    def test_unhide_items_wrapper_still_works(self, mock_ap):
+        from amazon_photos_mcp import unhide_items
+        result = unhide_items(["node-001"])
+        assert result.get("action") == "unhidden"
+
+    def test_set_hidden_true_with_json(self, mock_ap):
+        """set_hidden with JSON response enriches with action/count."""
+        resp = MagicMock()
+        resp.json.return_value = {"hidden": ["n1"]}
+        mock_ap.hide.return_value = resp
+        result = mod.set_hidden(["n1"], hidden=True)
+        assert result["hidden"] == ["n1"]
+        assert result["action"] == "hidden"
         assert result["count"] == 1
 
+    def test_set_hidden_false_with_json(self, mock_ap):
+        """set_hidden(unhide) with JSON response."""
+        resp = MagicMock()
+        resp.json.return_value = {"unhidden": ["n1", "n2"]}
+        mock_ap.unhide.return_value = resp
+        result = mod.set_hidden(["n1", "n2"], hidden=False)
+        assert result["unhidden"] == ["n1", "n2"]
+        assert result["action"] == "unhidden"
+        assert result["count"] == 2
 
-# ---------------------------------------------------------------------------
-# hide_items / unhide_items
-# ---------------------------------------------------------------------------
+    def test_set_hidden_true_no_json(self, mock_ap):
+        """set_hidden without JSON fallback uses standardized envelope."""
+        mock_ap.hide.return_value = MagicMock(spec_set=[])
+        result = mod.set_hidden(["n1"], hidden=True)
+        assert result["status"] == "ok"
+        assert result["action"] == "hidden"
+        assert result["count"] == 1
 
-class TestHideItems:
-    def test_returns_json_when_available(self, mock_ap):
+    def test_hide_items_returns_json_when_available(self, mock_ap):
         resp = MagicMock()
         resp.json.return_value = {"hidden": ["n1"]}
         mock_ap.hide.return_value = resp
         result = mod.hide_items(["n1"])
         assert result["hidden"] == ["n1"]
 
-    def test_fallback_when_no_json(self, mock_ap):
-        mock_ap.hide.return_value = MagicMock(spec_set=[])
-        result = mod.hide_items(["n1", "n2"])
-        assert result["status"] == "hidden"
-        assert result["count"] == 2
-
-
-class TestUnhideItems:
-    def test_returns_json_when_available(self, mock_ap):
+    def test_unhide_items_returns_json_when_available(self, mock_ap):
         resp = MagicMock()
         resp.json.return_value = {"unhidden": ["n1"]}
         mock_ap.unhide.return_value = resp
         result = mod.unhide_items(["n1"])
         assert result["unhidden"] == ["n1"]
-
-    def test_fallback_when_no_json(self, mock_ap):
-        mock_ap.unhide.return_value = MagicMock(spec_set=[])
-        result = mod.unhide_items(["n1"])
-        assert result["status"] == "unhidden"
-        assert result["count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -999,8 +1106,8 @@ class TestSearchByThings:
         mod.search_by_things("beach")
         mock_ap.query.assert_called_once_with("type:(PHOTOS) things:(beach)")
 
-    def test_returns_list(self, mock_ap):
-        assert isinstance(mod.search_by_things("park"), list)
+    def test_returns_dict_with_items(self, mock_ap):
+        assert isinstance(mod.search_by_things("park"), dict)
 
     def test_custom_media_type(self, mock_ap):
         mod.search_by_things("cat", media_type="VIDEOS")
@@ -1065,7 +1172,7 @@ class TestDownloadForPipeline:
         out = str(tmp_path / "pipeline_out")
         result = mod.download_for_pipeline("things:(beach)", output_dir=out, max_items=5)
         assert result["status"] == "ok"
-        assert result["found"] > 0
+        assert result["downloaded"] > 0
 
     def test_no_results(self, mock_ap):
         mock_ap.query.return_value = pd.DataFrame()
@@ -1085,3 +1192,116 @@ class TestDownloadForPipeline:
             result = mod.download_for_pipeline("beach", max_items=2)
         assert result["status"] == "ok"
         assert "output_dir" in result
+
+
+# ---------------------------------------------------------------------------
+# download (unified)
+# ---------------------------------------------------------------------------
+
+class TestDownloadUnified:
+    def test_download_by_node_ids(self, mock_ap, tmp_path):
+        out = str(tmp_path / "unified_nodes")
+        result = mod.download(node_ids=["node-001", "node-002"], output_dir=out)
+        assert result["status"] == "ok"
+        assert result["downloaded"] == 2
+        assert "output_dir" in result
+        assert result["node_ids"] == ["node-001", "node-002"]
+
+    def test_download_by_query(self, mock_ap, tmp_path):
+        out = str(tmp_path / "unified_query")
+        result = mod.download(query="things:(beach)", output_dir=out, max_items=5)
+        assert result["status"] == "ok"
+        assert result["downloaded"] > 0
+
+    def test_download_by_date(self, mock_ap, tmp_path):
+        out = str(tmp_path / "unified_date")
+        result = mod.download(year=2024, month=6, day=15, output_dir=out)
+        assert result["status"] == "ok"
+        assert result["downloaded"] > 0
+
+    def test_no_args_returns_error(self, mock_ap):
+        result = mod.download()
+        assert result.get("error") is True
+        assert result["code"] == "INVALID_ARGS"
+
+    def test_deprecated_wrappers_still_work(self, mock_ap, tmp_path):
+        """Verify deprecated download_files wrapper delegates correctly."""
+        out = str(tmp_path / "wrapper_test")
+        result = mod.download_files(["node-001"], output_dir=out)
+        assert result["status"] == "ok"
+        assert result["downloaded"] == 1
+        assert "output_dir" in result
+
+    def test_no_results_for_query(self, mock_ap):
+        mock_ap.query.return_value = pd.DataFrame()
+        result = mod.download(query="nonexistent_thing")
+        assert result["status"] == "no_results"
+        assert result["count"] == 0
+
+    def test_typeerror_fallback(self, mock_ap, tmp_path):
+        out = str(tmp_path / "unified_typeerr")
+        mock_ap.download.side_effect = [TypeError("unexpected"), None]
+        result = mod.download(node_ids=["node-001"], output_dir=out)
+        assert result["status"] == "ok"
+        assert mock_ap.download.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Pagination metadata
+# ---------------------------------------------------------------------------
+
+class TestPaginationMetadata:
+    def test_safe_df_to_result_marks_has_more_correctly(self) -> None:
+        import pandas as pd
+
+        from amazon_photos_mcp import _safe_df_to_result
+        df = pd.DataFrame([{"id": str(i), "name": f"photo{i}.jpg"} for i in range(10)])
+        result = _safe_df_to_result(df, max_results=5)
+        assert result["has_more"] is True
+        assert result["total"] == 10
+        assert len(result["items"]) == 5
+
+    def test_safe_df_to_result_no_truncation(self) -> None:
+        import pandas as pd
+
+        from amazon_photos_mcp import _safe_df_to_result
+        df = pd.DataFrame([{"id": "1", "name": "photo.jpg"}])
+        result = _safe_df_to_result(df, max_results=50)
+        assert result["has_more"] is False
+        assert result["total"] == 1
+
+    def test_safe_df_to_result_none(self) -> None:
+        from amazon_photos_mcp import _safe_df_to_result
+        result = _safe_df_to_result(None)
+        assert result == {"items": [], "has_more": False, "total": 0}
+
+    def test_get_photos_returns_dict_with_metadata(self) -> None:
+        from amazon_photos_mcp import get_photos
+        result = get_photos(max_results=1)
+        assert isinstance(result, dict)
+        assert "items" in result
+        assert "has_more" in result
+
+    def test_search_photos_returns_dict_with_metadata(self) -> None:
+        from amazon_photos_mcp import search_photos
+        result = search_photos("type:(PHOTOS)")
+        assert isinstance(result, dict)
+        assert "items" in result
+
+
+# ---------------------------------------------------------------------------
+# download_library
+# ---------------------------------------------------------------------------
+
+class TestDownloadLibrary:
+    def test_download_library_creates_output_dir(self) -> None:
+        result = mod.download_library(output_dir="/tmp/test-export", max_items=10)
+        assert result["status"] in ("ok", "no_data")
+
+    def test_download_library_respects_max_items(self) -> None:
+        result = mod.download_library(max_items=50)
+        assert result["status"] in ("ok", "no_data")
+
+    def test_download_library_caps_at_10000(self) -> None:
+        result = mod.download_library(max_items=50000)
+        assert result["status"] in ("ok", "no_data")

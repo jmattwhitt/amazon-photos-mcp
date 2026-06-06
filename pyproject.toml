@@ -21,12 +21,16 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Communications :: File Sharing",
     "Topic :: Internet",
     "Topic :: Multimedia :: Graphics",
 ]
 dependencies = [
-    "fastmcp>=2.0.0",
+    "cryptography>=42.0.0",
+    "fastmcp>=2.0.0,<4",
+    "imagehash>=4.3",
+    "Pillow>=10.0",
     # Upstream amazon_photos has no stable releases — pin a known-good commit.
     # Remove allow-direct-references below before publishing to PyPI.
     "amazon-photos @ git+https://github.com/trevorhobenshield/amazon_photos.git@685c965b5a4ba1ac85d418820ad200e12c18a46d",
@@ -89,3 +93,8 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+
+[dependency-groups]
+dev = [
+    "pytest-anyio>=0.0.0",
+]

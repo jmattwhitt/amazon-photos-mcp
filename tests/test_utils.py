@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -9,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 import amazon_photos_mcp as mod
 
@@ -250,3 +252,186 @@ class TestSafeDfToList:
     def test_handles_list_input(self):
         data = [{"id": "a"}, {"id": "b"}, {"id": "c"}]
         assert mod._safe_df_to_list(data, max_results=2) == [{"id": "a"}, {"id": "b"}]
+
+
+class TestToolAnnotations:
+    """Verify every registered tool has appropriate annotations."""
+
+    def test_read_only_tools_have_read_only_hint(self) -> None:
+        from amazon_photos_mcp import _READ_ONLY_TOOLS, _tool_annotations
+        for name in _READ_ONLY_TOOLS:
+            ann = _tool_annotations(name)
+            assert ann.get("readOnlyHint") is True, f"{name} missing readOnlyHint"
+
+    def test_destructive_tools_have_destructive_hint(self) -> None:
+        from amazon_photos_mcp import _DESTRUCTIVE_TOOLS, _tool_annotations
+        for name in _DESTRUCTIVE_TOOLS:
+            ann = _tool_annotations(name)
+            assert ann.get("destructiveHint") is True, f"{name} missing destructiveHint"
+
+    def test_idempotent_tools_have_idempotent_hint(self) -> None:
+        from amazon_photos_mcp import _IDEMPOTENT_TOOLS, _tool_annotations
+        for name in _IDEMPOTENT_TOOLS:
+            ann = _tool_annotations(name)
+            assert ann.get("idempotentHint") is True, f"{name} missing idempotentHint"
+
+    def test_no_overlap_read_only_and_destructive(self) -> None:
+        from amazon_photos_mcp import _DESTRUCTIVE_TOOLS, _READ_ONLY_TOOLS
+        overlap = _READ_ONLY_TOOLS & _DESTRUCTIVE_TOOLS
+        assert not overlap, f"Tools in both sets: {overlap}"
+
+    def test_all_tool_names_are_valid(self) -> None:
+        """Every tool registered with mcp should have annotations defined."""
+        from amazon_photos_mcp import _tool_annotations, mcp
+
+        tools = asyncio.run(mcp._local_provider.list_tools())
+        for tool in tools:
+            name = tool.name
+            ann = _tool_annotations(name)
+            assert ann, f"Tool {name} has no annotations helper entry"
+
+
+# ---------------------------------------------------------------------------
+# RateLimiter
+# ---------------------------------------------------------------------------
+
+class TestRateLimiter:
+    def test_token_bucket_allows_within_limit(self) -> None:
+        from amazon_photos_mcp.rate_limiter import TokenBucket
+        bucket = TokenBucket(rate=100.0, capacity=10)
+        for _ in range(5):
+            assert bucket.consume(1) is True
+
+    def test_token_bucket_blocks_when_exhausted(self) -> None:
+        from amazon_photos_mcp.rate_limiter import TokenBucket
+        bucket = TokenBucket(rate=0.0, capacity=0)
+        assert bucket.consume(1) is False
+
+    def test_rate_limit_error_includes_retry_after(self) -> None:
+        from amazon_photos_mcp import RateLimitError
+        e = RateLimitError(retry_after=30)
+        assert e.retry_after == 30
+        assert e.code == "RATE_LIMITED"
+
+    def test_wrap_http_errors_detects_429(self) -> None:
+        from unittest.mock import MagicMock
+
+        from amazon_photos_mcp import RateLimitError, _wrap_http_errors
+        mock_client = MagicMock()
+        mock_resp = MagicMock(status_code=429)
+        mock_resp.headers = {"Retry-After": "45"}
+        mock_client._session.request.return_value = mock_resp
+        _wrap_http_errors(mock_client)
+        with pytest.raises(RateLimitError) as exc_info:
+            mock_client._session.request("GET", "https://example.com")
+        assert exc_info.value.retry_after == 45
+
+    def test_wrap_http_errors_detects_503(self) -> None:
+        from unittest.mock import MagicMock
+
+        from amazon_photos_mcp import RateLimitError, _wrap_http_errors
+        mock_client = MagicMock()
+        mock_resp = MagicMock(status_code=503, headers={})
+        mock_client._session.request.return_value = mock_resp
+        _wrap_http_errors(mock_client)
+        with pytest.raises(RateLimitError) as exc_info:
+            mock_client._session.request("GET", "https://example.com")
+        assert exc_info.value.retry_after == 30
+
+
+# ---------------------------------------------------------------------------
+# Cookie encryption (AES-256-GCM)
+# ---------------------------------------------------------------------------
+
+class TestCookieEncryption:
+    def test_roundtrip_encrypted_cookies(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies, save_encrypted_cookies
+
+        path = tmp_path / "cookies.json"
+        original = {"ubid-main": "test-123", "at-main": "token-abc", "session-id": "sess-xyz"}
+        save_encrypted_cookies(path, original)
+        loaded = load_encrypted_cookies(path)
+        assert loaded == original
+
+    def test_encrypted_file_has_magic_header(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import save_encrypted_cookies
+
+        path = tmp_path / "cookies.json"
+        save_encrypted_cookies(path, {"test": "value"})
+        raw = path.read_bytes()
+        assert raw[:4] == b"AMCP"
+
+    def test_load_encrypted_reads_plaintext_fallback(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "cookies.json"
+        path.write_text(json.dumps({"plain": "text"}))
+        cookies = load_encrypted_cookies(path)
+        assert cookies == {"plain": "text"}
+
+    def test_load_encrypted_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "nonexistent.json"
+        assert load_encrypted_cookies(path) is None
+
+    def test_load_encrypted_returns_none_for_corrupt_data(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "broken.json"
+        path.write_text("this is not valid json {{{")
+        assert load_encrypted_cookies(path) is None
+
+    def test_load_encrypted_returns_none_for_corrupted_encrypted(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "bad_encrypted.json"
+        # AMCP header + garbage that looks like nonce+cipher+tag
+        path.write_bytes(b"AMCP" + b"\x00" * 40)
+        assert load_encrypted_cookies(path) is None
+
+    def test_machine_key_is_deterministic(self) -> None:
+        from amazon_photos_mcp.crypto import _machine_key
+
+        k1 = _machine_key()
+        k2 = _machine_key()
+        assert k1 == k2
+        assert len(k1) == 32
+
+
+# ---------------------------------------------------------------------------
+# Perceptual hash (pHash)
+# ---------------------------------------------------------------------------
+
+
+class TestPerceptualHash:
+    def test_hamming_distance_identical(self) -> None:
+        from amazon_photos_mcp.phash import hamming_distance
+        assert hamming_distance("a0b1c2d3e4f5a0b1", "a0b1c2d3e4f5a0b1") == 0
+
+    def test_hamming_distance_different(self) -> None:
+        from amazon_photos_mcp.phash import hamming_distance
+        dist = hamming_distance("a" * 16, "b" * 16)
+        assert dist > 0
+
+    def test_hamming_distance_different_lengths(self) -> None:
+        from amazon_photos_mcp.phash import hamming_distance
+        assert hamming_distance("a", "bb") == 8
+
+    def test_find_near_duplicates_empty(self) -> None:
+        from amazon_photos_mcp.phash import find_near_duplicates
+        groups = find_near_duplicates({})
+        assert groups == []
+
+    def test_find_near_duplicates_no_matches(self) -> None:
+        from amazon_photos_mcp.phash import find_near_duplicates
+        hashes = {"id1": "a" * 16, "id2": "f" * 16}
+        groups = find_near_duplicates(hashes, threshold=2)
+        assert groups == []
+
+    def test_compute_phash_returns_none_for_non_image(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.phash import compute_phash
+        bad_file = tmp_path / "not_an_image.txt"
+        bad_file.write_text("hello")
+        result = compute_phash(bad_file)
+        assert result is None
