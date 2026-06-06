@@ -175,14 +175,20 @@ def _write(cookies: dict[str, str]) -> None:
         if hyphen in output:
             output[underscore] = output[hyphen]
 
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    COOKIE_FILE.write_text(json.dumps(output, indent=2))
-
     try:
-        import stat
-        COOKIE_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
-    except Exception:
-        pass  # Windows may not honor Unix perms -- not fatal
+        from amazon_photos_mcp.crypto import save_encrypted_cookies
+
+        save_encrypted_cookies(COOKIE_FILE, output)
+        print(f"Cookies saved (encrypted) to {COOKIE_FILE}")
+    except ImportError:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        COOKIE_FILE.write_text(json.dumps(output, indent=2))
+        print(f"Cookies saved (plaintext) to {COOKIE_FILE}")
+        try:
+            import stat
+            COOKIE_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        except Exception:
+            pass  # Windows may not honor Unix perms -- not fatal
 
 
 def main() -> None:

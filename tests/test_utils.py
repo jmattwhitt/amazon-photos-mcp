@@ -337,3 +337,55 @@ class TestRateLimiter:
         with pytest.raises(RateLimitError) as exc_info:
             mock_client._session.request("GET", "https://example.com")
         assert exc_info.value.retry_after == 30
+
+
+# ---------------------------------------------------------------------------
+# Cookie encryption (AES-256-GCM)
+# ---------------------------------------------------------------------------
+
+class TestCookieEncryption:
+    def test_roundtrip_encrypted_cookies(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies, save_encrypted_cookies
+
+        path = tmp_path / "cookies.json"
+        original = {"ubid-main": "test-123", "at-main": "token-abc", "session-id": "sess-xyz"}
+        save_encrypted_cookies(path, original)
+        loaded = load_encrypted_cookies(path)
+        assert loaded == original
+
+    def test_encrypted_file_has_magic_header(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import save_encrypted_cookies
+
+        path = tmp_path / "cookies.json"
+        save_encrypted_cookies(path, {"test": "value"})
+        raw = path.read_bytes()
+        assert raw[:4] == b"AMCP"
+
+    def test_load_encrypted_reads_plaintext_fallback(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "cookies.json"
+        path.write_text(json.dumps({"plain": "text"}))
+        cookies = load_encrypted_cookies(path)
+        assert cookies == {"plain": "text"}
+
+    def test_load_encrypted_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "nonexistent.json"
+        assert load_encrypted_cookies(path) is None
+
+    def test_load_encrypted_returns_none_for_corrupt_data(self, tmp_path: Path) -> None:
+        from amazon_photos_mcp.crypto import load_encrypted_cookies
+
+        path = tmp_path / "broken.json"
+        path.write_text("this is not valid json {{{")
+        assert load_encrypted_cookies(path) is None
+
+    def test_machine_key_is_deterministic(self) -> None:
+        from amazon_photos_mcp.crypto import _machine_key
+
+        k1 = _machine_key()
+        k2 = _machine_key()
+        assert k1 == k2
+        assert len(k1) == 32

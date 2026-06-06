@@ -57,6 +57,7 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "amazon-photos" },
+    { name = "cryptography" },
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "pyarrow" },
@@ -78,6 +79,7 @@ scripts = [
 [package.metadata]
 requires-dist = [
     { name = "amazon-photos", git = "https://github.com/trevorhobenshield/amazon_photos.git?rev=685c965b5a4ba1ac85d418820ad200e12c18a46d" },
+    { name = "cryptography", specifier = ">=42.0.0" },
     { name = "fastmcp", specifier = ">=2.0.0" },
     { name = "httpx" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },
