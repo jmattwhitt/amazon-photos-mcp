@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 import amazon_photos_mcp as mod
 
@@ -288,3 +289,49 @@ class TestToolAnnotations:
             name = tool.name
             ann = _tool_annotations(name)
             assert ann, f"Tool {name} has no annotations helper entry"
+
+
+# ---------------------------------------------------------------------------
+# RateLimiter
+# ---------------------------------------------------------------------------
+
+class TestRateLimiter:
+    def test_token_bucket_allows_within_limit(self) -> None:
+        from amazon_photos_mcp.rate_limiter import TokenBucket
+        bucket = TokenBucket(rate=100.0, capacity=10)
+        for _ in range(5):
+            assert bucket.consume(1) is True
+
+    def test_token_bucket_blocks_when_exhausted(self) -> None:
+        from amazon_photos_mcp.rate_limiter import TokenBucket
+        bucket = TokenBucket(rate=0.0, capacity=0)
+        assert bucket.consume(1) is False
+
+    def test_rate_limit_error_includes_retry_after(self) -> None:
+        from amazon_photos_mcp import RateLimitError
+        e = RateLimitError(retry_after=30)
+        assert e.retry_after == 30
+        assert e.code == "RATE_LIMITED"
+
+    def test_wrap_http_errors_detects_429(self) -> None:
+        from unittest.mock import MagicMock
+        from amazon_photos_mcp import RateLimitError, _wrap_http_errors
+        mock_client = MagicMock()
+        mock_resp = MagicMock(status_code=429)
+        mock_resp.headers = {"Retry-After": "45"}
+        mock_client._session.request.return_value = mock_resp
+        _wrap_http_errors(mock_client)
+        with pytest.raises(RateLimitError) as exc_info:
+            mock_client._session.request("GET", "https://example.com")
+        assert exc_info.value.retry_after == 45
+
+    def test_wrap_http_errors_detects_503(self) -> None:
+        from unittest.mock import MagicMock
+        from amazon_photos_mcp import RateLimitError, _wrap_http_errors
+        mock_client = MagicMock()
+        mock_resp = MagicMock(status_code=503, headers={})
+        mock_client._session.request.return_value = mock_resp
+        _wrap_http_errors(mock_client)
+        with pytest.raises(RateLimitError) as exc_info:
+            mock_client._session.request("GET", "https://example.com")
+        assert exc_info.value.retry_after == 30

@@ -271,7 +271,32 @@ def _get_client(force_refresh: bool = False) -> Any:
             AmazonPhotos.get_folders = _orig_get_folders
             AmazonPhotos.build_tree = _orig_build_tree
 
+        _wrap_http_errors(_client)
+
         return _client
+
+
+def _wrap_http_errors(client: Any) -> None:
+    """Wrap the client's httpx session to detect rate limiting."""
+    from amazon_photos_mcp.rate_limiter import check_rate_limit
+
+    if hasattr(client, "_session"):
+        session = client._session
+        orig_request = session.request
+
+        def _patched_request(method: str, url: str, **kwargs: Any) -> Any:
+            check_rate_limit()
+            resp = orig_request(method, url, **kwargs)
+            if hasattr(resp, "status_code"):
+                if resp.status_code == 429:
+                    raise RateLimitError(
+                        retry_after=int(resp.headers.get("Retry-After", 60))
+                    )
+                if resp.status_code == 503:
+                    raise RateLimitError(retry_after=30)
+            return resp
+
+        session.request = _patched_request
 
 
 def _is_nan(v: Any) -> bool:
