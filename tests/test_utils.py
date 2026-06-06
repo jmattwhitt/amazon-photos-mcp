@@ -275,16 +275,16 @@ class TestToolAnnotations:
             assert ann.get("idempotentHint") is True, f"{name} missing idempotentHint"
 
     def test_no_overlap_read_only_and_destructive(self) -> None:
-        from amazon_photos_mcp import _READ_ONLY_TOOLS, _DESTRUCTIVE_TOOLS
+        from amazon_photos_mcp import _DESTRUCTIVE_TOOLS, _READ_ONLY_TOOLS
         overlap = _READ_ONLY_TOOLS & _DESTRUCTIVE_TOOLS
         assert not overlap, f"Tools in both sets: {overlap}"
 
     def test_all_tool_names_are_valid(self) -> None:
         """Every tool registered with mcp should have annotations defined."""
-        from amazon_photos_mcp import mcp, _tool_annotations
+        from amazon_photos_mcp import _tool_annotations, mcp
 
         tools = asyncio.run(mcp._local_provider.list_tools())
         for tool in tools:
             name = tool.name
             ann = _tool_annotations(name)
-            assert isinstance(ann, dict), f"Tool {name} has no annotations helper entry"
+            assert ann, f"Tool {name} has no annotations helper entry"
