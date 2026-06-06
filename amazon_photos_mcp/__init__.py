@@ -330,6 +330,28 @@ def _safe_df_to_list(df: Any, max_results: int = 50, slim: bool = False) -> list
     return result
 
 
+def _safe_df_to_result(df: Any, max_results: int = 50, slim: bool = False) -> dict[str, Any]:
+    """Like _safe_df_to_list but returns dict with truncation metadata."""
+    if df is None:
+        return {"items": [], "has_more": False, "total": 0}
+    if isinstance(df, list):
+        total = len(df)
+        items = df[:max_results]
+        return {"items": items, "has_more": total > max_results, "total": total}
+    if hasattr(df, "empty") and df.empty:
+        return {"items": [], "has_more": False, "total": 0}
+    total = len(df)
+    if hasattr(df, "columns") and "id" in df.columns:
+        df = df.drop_duplicates(subset=["id"])
+    if not hasattr(df, "to_dict"):
+        return {"items": [{"value": str(df)}], "has_more": False, "total": 1}
+    items = df.head(max_results).to_dict(orient="records")
+    items = [_clean_row(r) for r in items]
+    if slim:
+        items = [{k: v for k, v in r.items() if k in SLIM_FIELDS} for r in items]
+    return {"items": items, "has_more": total > max_results, "total": total}
+
+
 @mcp.tool(annotations=_tool_annotations("check_connection"))
 @_tool
 def check_connection() -> dict[str, Any]:
@@ -423,29 +445,29 @@ def get_aggregations(category: str = "all") -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("search_photos"))
 @_tool
-def search_photos(query: str, max_results: int = 25) -> list[dict[str, Any]]:
+def search_photos(query: str, max_results: int = 25) -> dict[str, Any]:
     """Search Amazon Photos by query string with optional filters (type, things, dates, etc.)."""
     ap = _get_client()
     df = ap.query(query)
-    return _safe_df_to_list(df, min(max_results, 200))
+    return _safe_df_to_result(df, min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("get_photos"))
 @_tool
-def get_photos(max_results: int = 25) -> list[dict[str, Any]]:
+def get_photos(max_results: int = 25) -> dict[str, Any]:
     """Get recent photos from your Amazon Photos library."""
     ap = _get_client()
     df = ap.photos()
-    return _safe_df_to_list(df, min(max_results, 200), slim=True)
+    return _safe_df_to_result(df, min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("get_videos"))
 @_tool
-def get_videos(max_results: int = 25) -> list[dict[str, Any]]:
+def get_videos(max_results: int = 25) -> dict[str, Any]:
     """Get recent videos from your Amazon Photos library."""
     ap = _get_client()
     df = ap.videos()
-    return _safe_df_to_list(df, min(max_results, 200), slim=True)
+    return _safe_df_to_result(df, min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_date"))
@@ -456,7 +478,7 @@ def search_by_date(
     day: int | None = None,
     media_type: str = "PHOTOS",
     max_results: int = 25,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Search photos/videos by date range."""
     ap = _get_client()
     parts = [f"type:({media_type})", f"timeYear:({year})"]
@@ -465,7 +487,7 @@ def search_by_date(
     if day:
         parts.append(f"timeDay:({day})")
     df = ap.query(" ".join(parts))
-    return _safe_df_to_list(df, min(max_results, 200))
+    return _safe_df_to_result(df, min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_things"))
@@ -474,11 +496,11 @@ def search_by_things(
     things: str,
     media_type: str = "PHOTOS",
     max_results: int = 25,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Search photos by auto-detected labels (e.g. 'beach', 'dog AND park')."""
     ap = _get_client()
     df = ap.query(f"type:({media_type}) things:({things})")
-    return _safe_df_to_list(df, min(max_results, 200))
+    return _safe_df_to_result(df, min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("get_photo_url"))
@@ -542,11 +564,11 @@ def get_exif_data(node_id: str) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("list_folders"))
 @_tool
-def list_folders() -> list[dict[str, Any]]:
+def list_folders() -> dict[str, Any]:
     """List all folders in your Amazon Photos library."""
     ap = _get_client()
     df = ap.get_folders()
-    return _safe_df_to_list(df, max_results=500)
+    return _safe_df_to_result(df, max_results=500)
 
 
 @mcp.tool(annotations=_tool_annotations("get_folder_tree"))
@@ -562,11 +584,11 @@ def get_folder_tree() -> str:
 
 @mcp.tool(annotations=_tool_annotations("list_albums"))
 @_tool
-def list_albums(max_results: int = 100) -> list[dict[str, Any]]:
+def list_albums(max_results: int = 100) -> dict[str, Any]:
     """List all albums in your Amazon Photos library."""
     ap = _get_client()
     result = ap.albums()
-    return _safe_df_to_list(result, max_results)
+    return _safe_df_to_result(result, max_results)
 
 
 @mcp.tool(annotations=_tool_annotations("create_album"))
@@ -648,7 +670,7 @@ def unhide_items(node_ids: list[str]) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("list_people"))
 @_tool
-def list_people() -> list[dict[str, Any]]:
+def list_people() -> dict[str, Any]:
     """List all face clusters (people) recognized in your Amazon Photos library."""
     ap = _get_client()
     people = ap.aggregations("allPeople", out="")
@@ -662,12 +684,12 @@ def list_people() -> list[dict[str, Any]]:
             "node_id": entry.get("searchData", {}).get("nodeId"),
         })
     results.sort(key=lambda x: x["count"], reverse=True)
-    return results
+    return {"items": results, "has_more": False, "total": len(results)}
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_person"))
 @_tool
-def search_by_person(person: str, max_results: int = 50) -> list[dict[str, Any]]:
+def search_by_person(person: str, max_results: int = 50) -> dict[str, Any]:
     """Search photos containing a specific person by name or cluster ID."""
     ap = _get_client()
     max_results = min(max_results, 200)
@@ -681,7 +703,7 @@ def search_by_person(person: str, max_results: int = 50) -> list[dict[str, Any]]
     if cluster_id is None:
         cluster_id = person
     df = ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
-    return _safe_df_to_list(df, max_results)
+    return _safe_df_to_result(df, max_results)
 
 
 @mcp.tool(annotations=_tool_annotations("name_person"))
@@ -727,16 +749,16 @@ def trash_items(node_ids: list[str]) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("list_trashed"))
 @_tool
-def list_trashed() -> list[dict[str, Any]]:
+def list_trashed() -> dict[str, Any]:
     """List items currently in the Amazon Photos trash."""
     ap = _get_client()
     df = ap.trashed()
-    return _safe_df_to_list(df, max_results=200)
+    return _safe_df_to_result(df, max_results=200)
 
 
 @mcp.tool(annotations=_tool_annotations("list_recently_deleted"))
 @_tool
-def list_recently_deleted(within_days: int = 7) -> list[dict[str, Any]]:
+def list_recently_deleted(within_days: int = 7) -> dict[str, Any]:
     """List items trashed within the last N days, newest first."""
     import pandas as pd
 
@@ -745,7 +767,7 @@ def list_recently_deleted(within_days: int = 7) -> list[dict[str, Any]]:
     df = ap.trashed()
 
     if df is None or (hasattr(df, "empty") and df.empty):
-        return []
+        return {"items": [], "has_more": False, "total": 0}
 
     if "modifiedDate" in df.columns:
         cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=within_days)
@@ -754,13 +776,13 @@ def list_recently_deleted(within_days: int = 7) -> list[dict[str, Any]]:
             df = df[df["modifiedDate"] >= cutoff]
             df = df.sort_values("modifiedDate", ascending=False)
         except (TypeError, ValueError, pd.errors.OutOfBoundsDatetime) as e:
-            result = _safe_df_to_list(df, max_results=200)
-            for r in result:
+            result = _safe_df_to_result(df, max_results=200)
+            for r in result["items"]:
                 r["_date_filter_applied"] = False
                 r["_date_filter_error"] = str(e)
             return result
 
-    return _safe_df_to_list(df, max_results=200)
+    return _safe_df_to_result(df, max_results=200)
 
 
 @mcp.tool(annotations=_tool_annotations("restore_items"))
