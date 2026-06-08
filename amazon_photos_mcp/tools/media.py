@@ -324,7 +324,9 @@ def download_library(
     if not items:
         return {"status": "no_items", "message": "No items after processing."}
 
-    node_ids = [item["id"] for item in items if item.get("id")]
+    node_ids = [item["id"] for item in items if item.get("id")] if items else []
+    # Filter items to only those with IDs so batch indexing stays in sync
+    items = [it for it in items if it.get("id")]
 
     if dry_run:
         # Estimate sizes

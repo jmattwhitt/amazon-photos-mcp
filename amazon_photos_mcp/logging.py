@@ -73,11 +73,13 @@ def timed_tool(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         start = time.monotonic()
+        result: Any = None
+        succeeded = False
         try:
             result = fn(*args, **kwargs)
+            succeeded = not (isinstance(result, dict) and result.get("error"))
         finally:
             elapsed_ms = (time.monotonic() - start) * 1000
-            succeeded = not (isinstance(result, dict) and result.get("error"))
             log_tool_call(fn.__name__, elapsed_ms, succeeded=succeeded)
         return result
 

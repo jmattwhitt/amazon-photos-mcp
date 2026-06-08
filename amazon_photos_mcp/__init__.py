@@ -190,6 +190,8 @@ def _tool(fn: Callable[P, R]) -> Callable[P, R | dict[str, Any]]:
                 "resource_type": e.resource_type,
                 "resource_id": e.resource_id,
             }
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except Exception as e:
             return {
                 "error": True,
@@ -264,7 +266,6 @@ def _get_client(force_refresh: bool = False) -> Any:
         db_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         if not db_path_obj.exists():
-            import pandas as pd
             pd.DataFrame().to_parquet(db_path_obj)
 
         _orig_get_root = AmazonPhotos.get_root
@@ -284,7 +285,6 @@ def _get_client(force_refresh: bool = False) -> Any:
         _wrap_http_errors(_client)
 
         return _client
-
 
 def _configure_http_pooling(client: Any) -> None:
     """Enable connection pooling on the httpx client for reduced latency."""

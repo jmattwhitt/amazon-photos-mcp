@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from amazon_photos_mcp import _get_client, _safe_df_to_result, _tool, _tool_annotations, mcp
@@ -131,8 +132,6 @@ def advanced_search(
         parts.append(f"type:({content_type})")
     else:
         parts.append("type:(PHOTOS)")
-
-    import re
 
     def _validate_date(d: str) -> str | None:
         if not d:

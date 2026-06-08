@@ -128,17 +128,21 @@ def main() -> None:
             browser.close()
 
     # Save
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
     # Add underscore variants for library compatibility
     output = dict(cookies)
     for hyphen, underscore in [("ubid-main", "ubid_main"), ("at-main", "at_main")]:
         if hyphen in output:
             output[underscore] = output[hyphen]
 
-    COOKIE_FILE.write_text(json.dumps(output, indent=2))
-
-    print(f"\nCookies saved to {COOKIE_FILE}")
+    try:
+        from amazon_photos_mcp.crypto import save_encrypted_cookies
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        save_encrypted_cookies(COOKIE_FILE, output)
+        print(f"Cookies saved (encrypted) to {COOKIE_FILE}")
+    except ImportError:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        COOKIE_FILE.write_text(json.dumps(output, indent=2))
+        print(f"\nCookies saved to {COOKIE_FILE}")
     print("Values (truncated):")
     for k in sorted(cookies):
         print(f"  {k}: {cookies[k][:8]}...")
