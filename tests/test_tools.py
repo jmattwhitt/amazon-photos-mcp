@@ -53,7 +53,12 @@ class TestRefreshClient:
         assert result["status"] == "connected"
 
     def test_invalidates_cookie_cache(self, mock_ap):
-        with patch("amazon_photos_mcp._invalidate_cookie_cache") as mock_inv:
+        with (
+            patch("amazon_photos_mcp._invalidate_cookie_cache") as mock_inv,
+            patch("amazon_photos_mcp._load_cookies",
+                   return_value={"ubid-main": "x", "at-main": "x", "session-id": "x"}),
+            patch("amazon_photos.AmazonPhotos", return_value=mock_ap),
+        ):
             mod.refresh_client()
         mock_inv.assert_called_once()
 

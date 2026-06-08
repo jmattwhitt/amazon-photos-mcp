@@ -137,9 +137,9 @@ def find_near_duplicates(
     for _, row in photos.iterrows():
         name = str(row.get("name", row.get("id", "")))
         node_id = str(row["id"])
-        name_to_id[name] = node_id
+        name_to_id.setdefault(name, node_id)
         stem = Path(name).stem
-        name_to_id[stem] = node_id
+        name_to_id.setdefault(stem, node_id)
 
     temp_dir = Path(tempfile.mkdtemp(prefix="ap-phash-"))
 
