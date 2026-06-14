@@ -18,8 +18,8 @@ def list_people() -> dict[str, Any]:
         name = entry.get("searchData", {}).get("clusterName") or "(unnamed)"
         results.append({
             "name": name,
-            "cluster_id": entry["value"],
-            "count": entry["count"],
+            "cluster_id": entry.get("value"),
+            "count": entry.get("count", 0),
             "node_id": entry.get("searchData", {}).get("nodeId"),
         })
     results.sort(key=lambda x: x["count"], reverse=True)

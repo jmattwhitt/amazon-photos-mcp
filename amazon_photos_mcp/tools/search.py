@@ -8,12 +8,36 @@ from typing import Any
 from amazon_photos_mcp import _get_client, _safe_df_to_result, _tool, _tool_annotations, mcp
 
 
+def _sanitize_query_value(value: str) -> str:
+    """Strip dangerous characters from Amazon Photos query values."""
+    # Remove parentheses and double-quotes.
+    value = re.sub(r'[()"]', '', value)
+    # Remove logical operators with word-boundary anchors.
+    value = re.sub(r'\b(AND|OR|NOT)\b', '', value, flags=re.IGNORECASE)
+    # Collapse runs of whitespace left by removed tokens
+    value = re.sub(r'\s+', ' ', value)
+    return value.strip()
+
+
+def _resolve_person_cluster(ap: Any, person: str) -> str | None:
+    """Resolve a person name to a cluster ID. Returns the cluster ID or None."""
+    people = ap.aggregations("allPeople", out="")
+    for entry in people:
+        cname = entry.get("searchData", {}).get("clusterName", "")
+        if cname and cname.lower() == person.lower():
+            return entry.get("value")
+    return None
+
+
 @mcp.tool(annotations=_tool_annotations("search_photos"))
 @_tool
 def search_photos(query: str, max_results: int = 25) -> dict[str, Any]:
     """Search Amazon Photos by query string with optional filters (type, things, dates, etc.)."""
     ap = _get_client()
-    df = ap.query(query)
+    query_clean = _sanitize_query_value(query)
+    if not query_clean:
+        return {"error": True, "code": "INVALID_ARGS", "message": "query parameter cannot be empty after sanitization."}
+    df = ap.query(query_clean)
     return _safe_df_to_result(df, min(max_results, 200))
 
 
@@ -45,8 +69,13 @@ def search_by_date(
     max_results: int = 25,
 ) -> dict[str, Any]:
     """Search photos/videos by date range."""
+    if month is not None and not (1 <= month <= 12):
+        return {"error": True, "code": "INVALID_ARGS", "message": f"month must be 1-12, got {month}"}
+    if day is not None and not (1 <= day <= 31):
+        return {"error": True, "code": "INVALID_ARGS", "message": f"day must be 1-31, got {day}"}
     ap = _get_client()
-    parts = [f"type:({media_type})", f"timeYear:({year})"]
+    media_type_clean = _sanitize_query_value(media_type)
+    parts = [f"type:({media_type_clean})", f"timeYear:({year})"]
     if month:
         parts.append(f"timeMonth:({month})")
     if day:
@@ -64,7 +93,12 @@ def search_by_things(
 ) -> dict[str, Any]:
     """Search photos by auto-detected labels (e.g. 'beach', 'dog AND park')."""
     ap = _get_client()
-    df = ap.query(f"type:({media_type}) things:({things})")
+    media_type_clean = _sanitize_query_value(media_type)
+    things_clean = _sanitize_query_value(things)
+    if not things_clean:
+        return {"error": True, "code": "INVALID_ARGS",
+                "message": "things parameter cannot be empty after sanitization."}
+    df = ap.query(f"type:({media_type_clean}) things:({things_clean})")
     return _safe_df_to_result(df, min(max_results, 200))
 
 
@@ -74,15 +108,10 @@ def search_by_person(person: str, max_results: int = 50) -> dict[str, Any]:
     """Search photos containing a specific person by name or cluster ID."""
     ap = _get_client()
     max_results = min(max_results, 200)
-    cluster_id = None
-    people = ap.aggregations("allPeople", out="")
-    for entry in people:
-        cname = entry.get("searchData", {}).get("clusterName", "")
-        if cname and cname.lower() == person.lower():
-            cluster_id = entry["value"]
-            break
+    person_clean = _sanitize_query_value(person)
+    cluster_id = _resolve_person_cluster(ap, person_clean)
     if cluster_id is None:
-        cluster_id = person
+        cluster_id = person_clean
     df = ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
     return _safe_df_to_result(df, max_results)
 
@@ -129,7 +158,11 @@ def advanced_search(
 
     # Content type
     if content_type:
-        parts.append(f"type:({content_type})")
+        content_type_clean = _sanitize_query_value(content_type)
+        if content_type_clean:
+            parts.append(f"type:({content_type_clean})")
+        else:
+            parts.append("type:(PHOTOS)")
     else:
         parts.append("type:(PHOTOS)")
 
@@ -165,19 +198,16 @@ def advanced_search(
 
     # Things
     if things:
-        parts.append(f"things:({things})")
+        things_clean = _sanitize_query_value(things)
+        if things_clean:
+            parts.append(f"things:({things_clean})")
 
     # Person
     if person:
-        cluster_id = None
-        people = ap.aggregations("allPeople", out="")
-        for entry in people:
-            cname = entry.get("searchData", {}).get("clusterName", "")
-            if cname and cname.lower() == person.lower():
-                cluster_id = entry["value"]
-                break
+        person_clean = _sanitize_query_value(person)
+        cluster_id = _resolve_person_cluster(ap, person_clean)
         if cluster_id is None:
-            cluster_id = person
+            cluster_id = person_clean
         parts.append(f"clusterId:({cluster_id})")
 
     # Build query and execute
@@ -222,6 +252,27 @@ def advanced_search(
 
     result = _safe_df_to_result(df, min(max_results, 200))
     result["query_used"] = query_str
+    # Surface which post-filters were active (helps diagnose zero-result responses)
+    active_post_filters = []
+    if min_size > 0:
+        active_post_filters.append(f"min_size>={min_size}")
+    if max_size > 0:
+        active_post_filters.append(f"max_size<={max_size}")
+    if has_location is True:
+        active_post_filters.append("has_location=True")
+    if has_location is False:
+        active_post_filters.append("has_location=False")
+    if is_favorite is not None:
+        active_post_filters.append(f"is_favorite={is_favorite}")
+    if is_hidden is not None:
+        active_post_filters.append(f"is_hidden={is_hidden}")
+    if active_post_filters:
+        result["post_filters_applied"] = active_post_filters
+        if result["total"] == 0 and result["items"] == []:
+            result["note"] = (
+                "No results matched after post-filtering. "
+                "Try relaxing size, location, favorite, or hidden filters."
+            )
     result["filters_applied"] = {
         "content_type": content_type,
         "date_from": date_from,

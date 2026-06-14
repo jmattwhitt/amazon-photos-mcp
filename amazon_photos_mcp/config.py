@@ -19,11 +19,13 @@ Config keys:
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
 _CONFIG_PATH = Path.home() / ".config" / "amazon-photos-mcp" / "config.toml"
 _cache: dict[str, Any] | None = None
+_cache_lock = threading.Lock()
 
 
 def _load_config() -> dict[str, Any]:
@@ -47,7 +49,9 @@ def _load_config() -> dict[str, Any]:
 def _cache_config() -> dict[str, Any]:
     global _cache
     if _cache is None:
-        _cache = _load_config()
+        with _cache_lock:
+            if _cache is None:
+                _cache = _load_config()
     return _cache
 
 
@@ -81,9 +85,15 @@ def _coerce(value: str, default: Any) -> Any:
     if isinstance(default, bool):
         return value.lower() in ("1", "true", "yes")
     if isinstance(default, int):
-        return int(value)
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
     if isinstance(default, float):
-        return float(value)
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
     return value
 
 

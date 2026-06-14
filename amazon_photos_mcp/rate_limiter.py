@@ -36,16 +36,19 @@ class TokenBucket:
 
 
 _global_bucket: TokenBucket | None = None
+_bucket_lock = Lock()
 
 
 def check_rate_limit() -> None:
     """Check and consume a rate limit token. Raises RateLimitError if exceeded."""
     global _global_bucket
     if _global_bucket is None:
-        from amazon_photos_mcp.config import get_config
-        rate = float(get_config("rate_limit", default=5.0))
-        cap = int(get_config("rate_capacity", default=10))
-        _global_bucket = TokenBucket(rate=rate, capacity=cap)
+        with _bucket_lock:
+            if _global_bucket is None:
+                from amazon_photos_mcp.config import get_config
+                rate = float(get_config("rate_limit", default=5.0))
+                cap = int(get_config("rate_capacity", default=10))
+                _global_bucket = TokenBucket(rate=rate, capacity=cap)
 
     from amazon_photos_mcp import RateLimitError
     if not _global_bucket.consume(1):

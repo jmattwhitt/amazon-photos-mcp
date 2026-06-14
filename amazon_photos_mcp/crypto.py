@@ -26,8 +26,22 @@ class DecryptionError(Exception):
 _MACHINE_KEY_CACHE: bytes | None = None
 
 
+# Per-project salt — does not need to be secret, but ensures keys differ
+# across applications even if machine attributes are identical.
+_KEY_SALT = b"amazon-photos-mcp:cookie-vault:v1"
+
+# PBKDF2 iteration count — high enough to slow brute-force, low enough
+# to not noticeably delay startup (~50ms on modern hardware).
+_KEY_ITERATIONS = 200_000
+
+
 def _machine_key() -> bytes:
-    """Derive a 32-byte key from machine-specific attributes.
+    """Derive a 32-byte key from machine-specific attributes via PBKDF2.
+
+    Uses HMAC-SHA256 with a per-project salt and 200k iterations.
+    This is NOT a substitute for a user-provided secret — it protects
+    against casual inspection but an attacker with local access who can
+    read machine identity attributes can recompute the key.
 
     Cached at module level — derived once per process lifetime.
     """
@@ -50,19 +64,23 @@ def _machine_key() -> bytes:
                 text=True,
                 timeout=5,
             )
-            parts.append(result.stdout.strip())
+            uuid_val = result.stdout.strip()
+            if uuid_val:
+                parts.append(uuid_val)
         except Exception:
             pass
     else:
         for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
             try:
-                parts.append(Path(p).read_text().strip())
-                break
+                val = Path(p).read_text().strip()
+                if val:
+                    parts.append(val)
+                    break
             except Exception:
                 pass
 
     seed = "|".join(parts).encode("utf-8")
-    _MACHINE_KEY_CACHE = hashlib.sha256(seed).digest()
+    _MACHINE_KEY_CACHE = hashlib.pbkdf2_hmac("sha256", seed, _KEY_SALT, _KEY_ITERATIONS, dklen=32)
     return _MACHINE_KEY_CACHE
 
 

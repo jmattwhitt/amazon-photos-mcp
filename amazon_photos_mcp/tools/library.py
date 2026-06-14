@@ -141,21 +141,21 @@ def get_library_stats() -> dict[str, Any]:
     # --- Folder / album / people counts ---
     try:
         folders = ap.get_folders()
-        stats["folder_count"] = len(folders) if hasattr(folders, "__len__") else "unavailable"
+        stats["folder_count"] = len(folders) if hasattr(folders, "__len__") else None
     except Exception:
-        stats["folder_count"] = "unavailable"
+        stats["folder_count"] = None
 
     try:
         albums = ap.albums()
-        stats["album_count"] = len(albums) if hasattr(albums, "__len__") else "unavailable"
+        stats["album_count"] = len(albums) if hasattr(albums, "__len__") else None
     except Exception:
-        stats["album_count"] = "unavailable"
+        stats["album_count"] = None
 
     try:
         people = ap.aggregations("allPeople", out="")
-        stats["people_count"] = len(people) if isinstance(people, list) else "unavailable"
+        stats["people_count"] = len(people) if isinstance(people, list) else None
     except Exception:
-        stats["people_count"] = "unavailable"
+        stats["people_count"] = None
 
     # --- Data quality ---
     quality: dict[str, int] = {}
@@ -175,7 +175,7 @@ def get_library_stats() -> dict[str, Any]:
             used_pct = (u.get("used", 0) / max(u.get("available", 1), 1)) * 100
             stats["storage_used_percent"] = round(used_pct, 1)
     except Exception:
-        pass
+        stats["storage_error"] = True
 
     stats["total_items"] = len(db)
     return stats
