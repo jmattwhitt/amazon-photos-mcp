@@ -64,9 +64,14 @@ def log_tool_call(tool_name: str, duration_ms: float, succeeded: bool = True) ->
 def timed_tool(fn: Any) -> Any:
     """Decorator to log tool execution time. Apply as innermost decorator.
 
-    NOTE: When stacked with @_tool (which catches all exceptions), the
-    except branch here will never execute — @_tool converts exceptions to
-    error dicts. The succeeded flag is checked on the returned dict instead.
+    IMPORTANT: MUST be the innermost decorator — apply AFTER @mcp.tool()
+    and @_tool. Correct order: @mcp.tool() -> @_tool -> @timed_tool.
+    Applying @timed_tool before @_tool will log FAIL for all exceptions,
+    even though @_tool converts them to structured error dicts.
+
+    Note: When stacked correctly with @_tool (which catches all exceptions),
+    this decorator detects failures by checking result.get("error") on
+    the returned dict rather than relying on the except branch.
     """
     import functools
 

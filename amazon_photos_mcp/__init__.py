@@ -119,21 +119,23 @@ _COOKIE_STAT_CACHE_TTL = 300.0
 
 _cookie_last_stat: float = 0.0
 _cookie_cached_mtime: float | None = None
+_cookie_cache_lock = threading.Lock()
 
 
 def _cookie_age_hours() -> float | None:
     global _cookie_last_stat, _cookie_cached_mtime
     now = time.time()
     mtime: float | None
-    if now - _cookie_last_stat < _COOKIE_STAT_CACHE_TTL and _cookie_cached_mtime is not None:
-        mtime = _cookie_cached_mtime
-    else:
-        try:
-            _cookie_cached_mtime = _AMAZON_COOKIE_PATH.stat().st_mtime
-        except FileNotFoundError:
-            _cookie_cached_mtime = None
-        _cookie_last_stat = now
-        mtime = _cookie_cached_mtime
+    with _cookie_cache_lock:
+        if now - _cookie_last_stat < _COOKIE_STAT_CACHE_TTL and _cookie_cached_mtime is not None:
+            mtime = _cookie_cached_mtime
+        else:
+            try:
+                _cookie_cached_mtime = _AMAZON_COOKIE_PATH.stat().st_mtime
+            except FileNotFoundError:
+                _cookie_cached_mtime = None
+            _cookie_last_stat = now
+            mtime = _cookie_cached_mtime
     if mtime is None:
         return None
     return (time.time() - mtime) / 3600
@@ -152,8 +154,9 @@ def _cookie_advice() -> str:
 
 def _invalidate_cookie_cache() -> None:
     global _cookie_last_stat, _cookie_cached_mtime
-    _cookie_last_stat = 0.0
-    _cookie_cached_mtime = None
+    with _cookie_cache_lock:
+        _cookie_last_stat = 0.0
+        _cookie_cached_mtime = None
 
 
 # ---------------------------------------------------------------------------
@@ -193,13 +196,16 @@ def _tool(fn: Callable[P, R]) -> Callable[P, R | dict[str, Any]]:
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
-            return {
+            debug = os.environ.get("AMAZON_PHOTOS_DEBUG", "").lower() in ("1", "true", "yes")
+            error_dict: dict[str, Any] = {
                 "error": True,
                 "code": "UNEXPECTED_ERROR",
                 "message": str(e),
                 "tool": fn.__name__,
-                "traceback": traceback.format_exc(),
             }
+            if debug:
+                error_dict["traceback"] = traceback.format_exc()
+            return error_dict
 
     return wrapper
 
@@ -337,6 +343,11 @@ def _clean_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _safe_df_to_list(df: Any, max_results: int = 50, slim: bool = False) -> list[dict[str, Any]]:
+    """Convert DataFrame to list of dicts with truncation and dedup.
+
+    Note: duplicate IDs are silently dropped via drop_duplicates.
+    Callers that need exact counts should check before/after lengths.
+    """
     if df is None:
         return []
     if isinstance(df, list):
@@ -364,9 +375,9 @@ def _safe_df_to_result(df: Any, max_results: int = 50, slim: bool = False) -> di
         return {"items": items, "has_more": total > max_results, "total": total}
     if hasattr(df, "empty") and df.empty:
         return {"items": [], "has_more": False, "total": 0}
-    total = len(df)
     if hasattr(df, "columns") and "id" in df.columns:
         df = df.drop_duplicates(subset=["id"])
+    total = len(df)
     if not hasattr(df, "to_dict"):
         return {"items": [{"value": str(df)}], "has_more": False, "total": 1}
     items = df.head(max_results).to_dict(orient="records")

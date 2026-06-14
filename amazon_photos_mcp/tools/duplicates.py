@@ -185,7 +185,7 @@ def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str
     if group.empty:
         return {"error": True, "code": "NOT_FOUND", "message": f"No files found with md5={md5_hash}"}
 
-    trash_ids = [row["id"] for _, row in group.iterrows() if row["id"] != keep_id]
+    trash_ids = [row.get("id") for _, row in group.iterrows() if row.get("id") and row.get("id") != keep_id]
 
     if not trash_ids:
         return {"status": "nothing_to_do", "message": "Only one copy found or keep_id is not in this group."}
@@ -247,10 +247,14 @@ def trash_duplicates(
     keep_ids: list[str] = []
 
     for _, group_df in dupe_rows.groupby("md5"):
-        sorted_group = group_df.sort_values("createdDate", ascending=True, na_position="last")
-        keep_ids.append(sorted_group.iloc[0]["id"])
+        # Sort NaN-dated items first so they get trashed, not kept.
+        # Items with unknown creation dates should not be auto-kept.
+        sorted_group = group_df.sort_values("createdDate", ascending=True, na_position="first")
+        keep_ids.append(sorted_group.iloc[0].get("id"))
         for _, row in sorted_group.iloc[1:].iterrows():
-            trash_ids.append(row["id"])
+            rid = row.get("id")
+            if rid:
+                trash_ids.append(rid)
 
     result: dict[str, Any] = {
         "action": "dry_run" if dry_run else "trashed",
@@ -334,12 +338,12 @@ def trash_near_duplicates(
         items.sort(key=_quality_score, reverse=True)
         keep = items[0]
 
-    trash_ids = [r["id"] for r in items if r["id"] != keep["id"]]
+    trash_ids = [r.get("id") for r in items if r.get("id") and r.get("id") != keep.get("id")]
 
     result: dict[str, Any] = {
         "action": "dry_run" if dry_run else "trashed",
         "group_size": len(items),
-        "keep_id": keep["id"],
+        "keep_id": keep.get("id"),
         "keep_name": keep.get("name"),
         "keep_strategy": keep_strategy,
         "keep_score": {

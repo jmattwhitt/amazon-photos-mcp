@@ -41,6 +41,8 @@ def list_trashed(within_days: int = 0) -> dict[str, Any]:
 
     if within_days > 0 and "modifiedDate" in df.columns:
         within_days = min(within_days, 30)
+        # Work on a copy to avoid mutating the cached ap.db DataFrame column type
+        df = df.copy()
         cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=within_days)
         try:
             df["modifiedDate"] = pd.to_datetime(df["modifiedDate"], utc=True, errors="coerce")

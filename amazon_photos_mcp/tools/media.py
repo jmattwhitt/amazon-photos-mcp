@@ -18,6 +18,7 @@ from amazon_photos_mcp import (
     _tool_annotations,
     mcp,
 )
+from amazon_photos_mcp.tools.search import _sanitize_query_value
 
 
 @mcp.tool(annotations=_tool_annotations("get_photo_url"))
@@ -160,11 +161,13 @@ def get_thumbnail(node_id: str, max_size: int = 0) -> dict[str, Any]:
         }
     except Exception as e:
         return {
+            "error": True,
+            "code": "THUMBNAIL_FAILED",
+            "message": "Thumbnail generation failed. Use the URL to view/download the image.",
             "node_id": node_id,
             "thumbnail_base64": None,
             "url": url,
-            "fallback": "Thumbnail generation failed. Use the URL to view/download the image.",
-            "error": str(e),
+            "detail": str(e),
         }
 
 
@@ -189,6 +192,10 @@ def get_download_progress() -> dict[str, Any]:
     p = Path(progress_path)
     if not p.exists():
         return {"status": "no_progress", "message": "No progress file found. No download in progress?"}
+    # Check for stale progress file (orphaned by a crashed download)
+    age_s = time.time() - p.stat().st_mtime
+    if age_s > 3600:  # 1 hour
+        return {"status": "stale", "message": f"Progress file is {age_s/3600:.1f}h old — download may have crashed."}
     try:
         data = json.loads(p.read_text())
         return {"status": "in_progress", **data}
@@ -225,13 +232,20 @@ def download(
     """
     ap = _get_client()
 
+    # Validate date params (consistent with search_by_date)
+    if month is not None and not (1 <= month <= 12):
+        return {"error": True, "code": "INVALID_ARGS", "message": f"month must be 1-12, got {month}"}
+    if day is not None and not (1 <= day <= 31):
+        return {"error": True, "code": "INVALID_ARGS", "message": f"day must be 1-31, got {day}"}
+
     # Resolve what to download
     if node_ids is not None:
         ids = node_ids
         if not output_dir:
             output_dir = str(Path.home() / "Downloads" / "amazon-photos")
     elif year is not None:
-        parts = [f"type:({media_type})", f"timeYear:({year})"]
+        media_type_clean = _sanitize_query_value(media_type)
+        parts = [f"type:({media_type_clean})", f"timeYear:({year})"]
         if month:
             parts.append(f"timeMonth:({month})")
         if day:
@@ -245,7 +259,8 @@ def download(
             date_str = f"{year:04d}" + (f"-{month:02d}" if month else "") + (f"-{day:02d}" if day else "")
             output_dir = str(Path.home() / "Downloads" / "amazon-photos" / date_str)
     elif query:
-        df = ap.query(query)
+        query_clean = _sanitize_query_value(query)
+        df = ap.query(query_clean)
         items = _safe_df_to_list(df, min(max_items, 2000))
         if not items:
             return {"status": "no_results", "query": query, "count": 0, "node_ids": []}
@@ -366,14 +381,17 @@ def download_library(
             batch_items = items[i:i + batch_size]
             for j, nid in enumerate(batch):
                 if j < len(batch_items):
-                    created = batch_items[j].get("createdDate", "")
+                    created_raw = batch_items[j].get("createdDate", "")
                 else:
-                    created = "unknown"
+                    created_raw = "unknown"
+                # Normalize Timestamp/date objects to string for consistent handling
+                if created_raw and not isinstance(created_raw, str):
+                    created = str(created_raw)
+                else:
+                    created = created_raw or "unknown"
                 date_dir = "unknown"
                 if isinstance(created, str) and len(created) >= 7:
                     date_dir = f"{created[:4]}/{created[5:7]}"
-                elif created:
-                    date_dir = str(created)[:7].replace("-", "/")
                 batch_out = out / date_dir
                 batch_out.mkdir(parents=True, exist_ok=True)
         else:
@@ -398,7 +416,10 @@ def download_library(
                 "current_batch": batch_idx + 1,
                 "total_batches": num_batches,
                 "elapsed_seconds": round(elapsed, 1),
-                "eta_seconds": round(elapsed / (downloaded / total) - elapsed, 1) if downloaded > 0 else None,
+                "eta_seconds": (
+                    round(elapsed / (max(downloaded, 1) / max(total, 1)) - elapsed, 1)
+                    if downloaded > 0 and total > 0 else None
+                ),
                 "failed_so_far": len(failed),
             }))
 

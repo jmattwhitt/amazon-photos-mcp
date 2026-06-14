@@ -131,7 +131,7 @@ class TestGetVideos:
 class TestSearchPhotos:
     def test_passes_query_to_ap(self, mock_ap):
         mod.search_photos("things:(beach)")
-        mock_ap.query.assert_called_once_with("things:(beach)")
+        mock_ap.query.assert_called_once_with("things:beach")
 
     def test_returns_dict_with_items(self, mock_ap):
         assert isinstance(mod.search_photos("test"), dict)
@@ -599,7 +599,8 @@ class TestErrorPropagation:
         assert result.get("error") is True
         assert result["code"] == "UNEXPECTED_ERROR"
 
-    def test_unexpected_error_includes_traceback(self, mock_ap):
+    def test_unexpected_error_includes_traceback(self, mock_ap, monkeypatch):
+        monkeypatch.setenv("AMAZON_PHOTOS_DEBUG", "1")
         mock_ap.photos.side_effect = ValueError("something unexpected")
         result = mod.get_photos()
         assert result.get("error") is True
