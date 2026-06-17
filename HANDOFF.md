@@ -87,6 +87,6 @@ Run: `uv run pytest tests/`
 
 ## Open Questions
 
-1. **download_library batch retry safety**: When a date group fails mid-batch, remaining items in that batch are skipped. Acceptable?
+1. **download_library batch retry safety**: Fixed! If a single item download fails mid-batch, the rest of the batch is no longer skipped. It correctly parses `results = ap.download()` and tallies successes/failures individually.
 2. **curl_cffi ARM compat**: May need platform-specific extras for Apple Silicon / Raspberry Pi.
 3. **Rate limiter config**: Now works via both env vars and TOML file.

@@ -12,7 +12,9 @@ def test_download_library_batching(mock_get_client):
     mock_get_client.return_value = mock_ap
 
     # Mock download to succeed
-    mock_ap.download.return_value = None
+    def mock_download(ids, out):
+        return [{"node_id": nid, "status": "ok"} for nid in ids]
+    mock_ap.download.side_effect = mock_download
 
     # We need to run it dry_run=False but output to a temp dir so we don't mess up the disk
     import tempfile

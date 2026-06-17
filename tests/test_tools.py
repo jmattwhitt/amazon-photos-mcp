@@ -993,8 +993,9 @@ class TestDownloadLibrary:
                 "contentType": "image/jpeg",
             })
         mock_ap.photos.return_value = items
-        mock_ap.download.return_value = None
-
+        def mock_download(ids, out=None, **kwargs):
+            return [{"node_id": nid, "status": "ok"} for nid in ids]
+        mock_ap.download.side_effect = mock_download
         out = tmp_path / "export"
         result = media.download_library(
             output_dir=str(out), max_items=100, organize_by="year_month", dry_run=False

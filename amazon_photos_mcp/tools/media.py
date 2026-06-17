@@ -400,22 +400,30 @@ def download_library(
                 batch_out = out / date_dir
                 batch_out.mkdir(parents=True, exist_ok=True)
                 try:
-                    ap.download(date_ids, out=str(batch_out))
-                    downloaded += len(date_ids)
+                    results = ap.download(date_ids, out=str(batch_out))
+                    for res in results:
+                        if res.get("status") == "ok":
+                            downloaded += 1
+                        else:
+                            failed.append(res.get("node_id", ""))
                 except Exception as e:
                     failed.extend(date_ids)
                     from amazon_photos_mcp.logging import log_error
-                    log_error("download_library date group %s failed: %s", date_dir, e)
+                    log_error("download_library date group %s failed critically: %s", date_dir, e)
         else:
             batch_out = out
             batch_out.mkdir(parents=True, exist_ok=True)
             try:
-                ap.download(batch, out=str(batch_out))
-                downloaded += len(batch)
+                results = ap.download(batch, out=str(batch_out))
+                for res in results:
+                    if res.get("status") == "ok":
+                        downloaded += 1
+                    else:
+                        failed.append(res.get("node_id", ""))
             except Exception as e:
                 failed.extend(batch)
                 from amazon_photos_mcp.logging import log_error
-                log_error("download_library batch %d/%d failed: %s", batch_idx + 1, num_batches, e)
+                log_error("download_library batch %d/%d failed critically: %s", batch_idx + 1, num_batches, e)
 
         # Write progress file
         if progress_path:
