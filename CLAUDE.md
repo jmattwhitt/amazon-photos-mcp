@@ -48,14 +48,19 @@ amazon_photos_mcp/
     |__ upload.py
 ```
 
-### Upstream library
+### Client layer
 
-Pinned to `amazon-photos @ git+https://github.com/trevorhobenshield/amazon_photos.git@685c965b`.
-- `AmazonPhotos.__init__` creates `httpx.Client`, fetches root/folders, loads DB.
-- `AmazonPhotos.process` takes a generator of async partials (`fn(client=client, sem=sem)`).
-- `_get_client()` in `__init__.py` monkey-patches `get_root`/`get_folders`/`build_tree`
-  to bypass slow API calls during init, then wires `_configure_http_pooling` and
-  `_wrap_http_errors` (rate limiting + 429/503 detection).
+The upstream `amazon-photos` library (Trevor Hobenshield) was replaced by a clean-room
+implementation in v0.3. No dependency on `trevorhobenshield/amazon_photos`.
+
+- `api.py` — `AmazonPhotosClient` wraps `curl_cffi.requests.Session` with browser TLS
+  fingerprint impersonation, request retry (3x exponential backoff + jitter), and
+  structured error handling (401 → `AuthenticationError`, 429/503 → `RateLimitError`).
+- `client.py` — `_load_cookies()` reads encrypted cookies; `_get_client()` lazily
+  creates + caches the `AmazonPhotosClient` singleton; `_wrap_http_errors()` patches
+  the curl_cffi session with rate limiting and circuit-breaker guards.
+- `rate_limiter.py` — Token-bucket (5 req/s, burst 10) + sliding-window circuit
+  breaker (opens for 30s after 5 failures in 60s).
 
 ### Key patterns
 

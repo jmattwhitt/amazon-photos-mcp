@@ -288,5 +288,5 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgements
 
-The API communication logic was heavily inspired by the [amazon-photos](https://github.com/trevorhobenshield/amazon_photos) library by Trevor Hobenshield.
+The original architecture was inspired by the [amazon-photos](https://github.com/trevorhobenshield/amazon_photos) library by Trevor Hobenshield. As of v0.3, the upstream dependency has been replaced by a clean-room `curl_cffi` client.
 
