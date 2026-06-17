@@ -68,8 +68,9 @@ amazon_photos_mcp/
 
 | Issue | Severity | Status |
 |-------|----------|--------|
-| connection.py:61 dead hasattr(result, "status_code") check | Minor | Unfixed -- harmless dead code |
-| validate_cookies fragile string matching | Minor | Unfixed -- fragile text match on error messages |
+| connection.py:61 dead hasattr(result, "status_code") check | Minor | Fixed (`3470058`) -- removed; catches AuthenticationError explicitly |
+| validate_cookies fragile string matching | Minor | Fixed (`3470058`) -- explicit except AuthenticationError |
+| utils.py _safe_df_to_result duplicated guard clauses | Minor | Fixed (`0c1d1c8`) -- delegates DataFrame path to _safe_df_to_list |
 | No test coverage for find_duplicates non-empty path | Medium | Unfixed -- no regression test added |
 | No test coverage for download_library date org | Medium | Unfixed -- no regression test added |
 | rate_limiter hardcodes rate/capacity | Low | Pre-existing |
