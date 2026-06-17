@@ -34,12 +34,22 @@ graph TD
 
 ## Install
 
+### From Source (Recommended)
+
 Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
 git clone https://github.com/jmattwhitt/amazon-photos-mcp.git
 cd amazon-photos-mcp
 uv sync
+```
+
+### Install from PyPI
+
+```bash
+uv tool install amazon-photos-mcp
+# or
+pip install amazon-photos-mcp
 ```
 
 ### Docker
@@ -92,8 +102,14 @@ Cookies are saved to `~/.config/amazon-photos-mcp/cookies.json` and expire after
 
 ## Configure Claude Code
 
+If you cloned the repo locally:
 ```bash
 claude mcp add --scope user amazon-photos -- uvx --from /path/to/amazon-photos-mcp amazon-photos-mcp
+```
+
+Or, run directly from PyPI without cloning:
+```bash
+claude mcp add --scope user amazon-photos -- uvx amazon-photos-mcp
 ```
 
 Then restart Claude Code. Call `check_connection` to verify.
@@ -270,6 +286,7 @@ uv run mypy amazon_photos_mcp/
 
 MIT — see [LICENSE](LICENSE).
 
-## Dependencies
+## Acknowledgements
 
-Uses the MIT-licensed [amazon-photos](https://github.com/trevorhobenshield/amazon_photos) library by Trevor Hobenshield for the Amazon Photos API client.
+The API communication logic was heavily inspired by the [amazon-photos](https://github.com/trevorhobenshield/amazon_photos) library by Trevor Hobenshield.
+

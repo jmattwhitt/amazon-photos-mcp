@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import contextlib
-import io
 from typing import Any
 
-from amazon_photos_mcp import _get_client, _safe_df_to_result, _stdout_lock, _tool, _tool_annotations, mcp
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
+from amazon_photos_mcp.utils import _safe_df_to_result
 
 
 @mcp.tool(annotations=_tool_annotations("list_folders"))
@@ -22,8 +23,4 @@ def list_folders() -> dict[str, Any]:
 @_tool
 def get_folder_tree() -> dict[str, Any]:
     """Display the folder tree of your Amazon Photos library."""
-    ap = _get_client()
-    buf = io.StringIO()
-    with _stdout_lock, contextlib.redirect_stdout(buf):
-        ap.print_tree()
-    return {"tree": buf.getvalue() or "No folder tree available."}
+    return {"tree": "Folder tree printing is deprecated in the native API client. Use list_folders instead."}

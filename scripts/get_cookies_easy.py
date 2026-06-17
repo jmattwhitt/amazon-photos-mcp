@@ -136,6 +136,7 @@ def main() -> None:
 
     try:
         from amazon_photos_mcp.crypto import save_encrypted_cookies
+
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         save_encrypted_cookies(COOKIE_FILE, output)
         print(f"Cookies saved (encrypted) to {COOKIE_FILE}")

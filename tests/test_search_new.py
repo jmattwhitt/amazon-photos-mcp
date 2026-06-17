@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
 from amazon_photos_mcp.tools.search import advanced_search
 
 
@@ -9,7 +7,7 @@ from amazon_photos_mcp.tools.search import advanced_search
 def test_advanced_search_date_query(mock_get_client):
     mock_ap = MagicMock()
     # Create empty df so post-filtering works fine without error
-    mock_ap.query.return_value = pd.DataFrame([{"id": "node1", "size": 100, "createdDate": "2024-06-01"}])
+    mock_ap.query.return_value = [{"id": "node1", "size": 100, "createdDate": "2024-06-01"}]
     mock_get_client.return_value = mock_ap
 
     # Test date range
@@ -55,7 +53,7 @@ def test_advanced_search_rejects_invalid_date_formats(mock_get_client):
 def test_advanced_search_accepts_valid_date_formats(mock_get_client):
     """Both YYYY-MM-DD and YYYYMMDD should be accepted."""
     mock_ap = MagicMock()
-    mock_ap.query.return_value = pd.DataFrame([{"id": "node1"}])
+    mock_ap.query.return_value = [{"id": "node1"}]
     mock_get_client.return_value = mock_ap
 
     # ISO format should work
@@ -67,6 +65,6 @@ def test_advanced_search_accepts_valid_date_formats(mock_get_client):
     assert "error" not in res2
 
     # Empty string should be skipped (no error)
-    mock_ap.query.return_value = pd.DataFrame([{"id": "node1"}])
+    mock_ap.query.return_value = [{"id": "node1"}]
     res3 = advanced_search(date_from="")
     assert "error" not in res3

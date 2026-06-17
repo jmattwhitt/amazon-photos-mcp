@@ -33,7 +33,7 @@ BROWSERS = ["firefox", "chrome", "edge", "brave", "opera", "chromium", "vivaldi"
 # Chrome 127+ / Edge 130+ app-bound encryption is NOT supported by rookie-rs
 # even with admin rights (upstream bugs #84, #95).
 
-APP_BOUND_MSG = "appbound"   # substring rookiepy puts in the error message
+APP_BOUND_MSG = "appbound"  # substring rookiepy puts in the error message
 
 
 def _extract_from_browser(browser_name: str) -> dict[str, str]:
@@ -188,6 +188,7 @@ def _write(cookies: dict[str, str]) -> None:
         print("  uv add cryptography")
         try:
             import stat
+
             COOKIE_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
         except Exception:
             pass  # Windows may not honor Unix perms -- not fatal
@@ -197,11 +198,10 @@ def main() -> None:
     # Force UTF-8 stdout on Windows so any stray non-ASCII doesn't crash cp1252
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
         import io
+
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-    parser = argparse.ArgumentParser(
-        description="Extract Amazon cookies from your browser and save to MCP config."
-    )
+    parser = argparse.ArgumentParser(description="Extract Amazon cookies from your browser and save to MCP config.")
     parser.add_argument(
         "--browser",
         choices=BROWSERS,
@@ -235,6 +235,7 @@ def main() -> None:
         _manual_mode()
         if args.show and COOKIE_FILE.exists():
             from amazon_photos_mcp.crypto import load_encrypted_cookies
+
             cookies = load_encrypted_cookies(COOKIE_FILE)
             if cookies:
                 print("\nValues (truncated):")

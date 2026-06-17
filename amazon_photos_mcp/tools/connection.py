@@ -4,35 +4,29 @@ from __future__ import annotations
 
 from typing import Any
 
-from amazon_photos_mcp import (
-    _COOKIE_EXPIRED_AFTER_HOURS,
-    _COOKIE_WARN_AFTER_HOURS,
-    _cookie_advice,
-    _cookie_age_hours,
-    _get_client,
-    _tool,
-    _tool_annotations,
-    mcp,
-)
+from amazon_photos_mcp import client as mod_client
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
 
 
 @mcp.tool(annotations=_tool_annotations("check_connection"))
 @_tool
 def check_connection() -> dict[str, Any]:
     """Test connection to Amazon Photos and report storage usage and cookie health."""
-    advice = _cookie_advice()
-    age_hours = _cookie_age_hours()
+    advice = mod_client.cookie_advice()
+    age_hours = mod_client._cookie_age_hours()
     age_days = age_hours / 24 if age_hours is not None else None
     warnings: list[str] = []
 
-    if age_hours is None or age_hours >= _COOKIE_EXPIRED_AFTER_HOURS:
+    if age_hours is None or age_hours >= mod_client._COOKIE_EXPIRED_AFTER_HOURS:
         warnings.append(advice)
-    elif age_hours >= _COOKIE_WARN_AFTER_HOURS:
+    elif age_hours >= mod_client._COOKIE_WARN_AFTER_HOURS:
         warnings.append(advice)
 
     ap = _get_client()
     usage = ap.usage()
-    data: dict[str, Any] = usage.json() if hasattr(usage, "json") else {"usage": str(usage)}
+    data: dict[str, Any] = usage if isinstance(usage, dict) else {"usage": str(usage)}
     data["status"] = "connected"
     data["cookie_health"] = advice
     if age_days is not None:
@@ -54,12 +48,12 @@ def refresh_client() -> dict[str, Any]:
 @_tool
 def validate_cookies() -> dict[str, Any]:
     """Check whether stored cookies are still accepted by Amazon."""
-    age_hours = _cookie_age_hours()
-    if age_hours is None or age_hours >= _COOKIE_EXPIRED_AFTER_HOURS:
+    age_hours = mod_client._cookie_age_hours()
+    if age_hours is None or age_hours >= mod_client._COOKIE_EXPIRED_AFTER_HOURS:
         return {
             "valid": False,
             "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,
-            "advice": _cookie_advice(),
+            "advice": mod_client.cookie_advice(),
         }
     try:
         ap = _get_client()
@@ -68,7 +62,7 @@ def validate_cookies() -> dict[str, Any]:
         return {
             "valid": ok,
             "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,
-            "advice": _cookie_advice(),
+            "advice": mod_client.cookie_advice(),
         }
     except Exception as e:
         s = str(e).lower()
@@ -76,6 +70,6 @@ def validate_cookies() -> dict[str, Any]:
         return {
             "valid": False,
             "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,
-            "advice": _cookie_advice(),
-            "error": str(e) if not auth_fail else "Auth rejected by Amazon — cookies expired.",
+            "advice": mod_client.cookie_advice(),
+            "error": str(e) if not auth_fail else "Auth rejected by Amazon -- cookies expired.",
         }

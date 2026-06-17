@@ -37,6 +37,7 @@ def get_logger() -> logging.Logger:
         log_file = os.environ.get("AMAZON_PHOTOS_LOG_FILE", "")
         if log_file:
             from pathlib import Path
+
             Path(log_file).parent.mkdir(parents=True, exist_ok=True)
             handler = logging.FileHandler(log_file)
         else:

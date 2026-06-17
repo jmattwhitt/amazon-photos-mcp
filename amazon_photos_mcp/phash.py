@@ -66,11 +66,13 @@ def find_near_duplicates(
                 seen.add(id_j)
         if len(group) > 1:
             seen.add(id_i)
-            groups.append({
-                "node_ids": group,
-                "count": len(group),
-                "phash_sample": h1,
-                "distances": [hamming_distance(h1, h) for h in group_hashes],
-            })
+            groups.append(
+                {
+                    "node_ids": group,
+                    "count": len(group),
+                    "phash_sample": h1,
+                    "distances": [hamming_distance(h1, h) for h in group_hashes],
+                }
+            )
 
     return groups

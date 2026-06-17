@@ -7,14 +7,18 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from amazon_photos_mcp import _get_client, _tool, _tool_annotations, mcp
+from pydantic import Field
+
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
 
 
 @mcp.tool(annotations=_tool_annotations("upload_file"))
 @_tool
-def upload_file(file_path: str) -> dict[str, Any]:
+def upload_file(file_path: Annotated[str, Field(description="Absolute path to the file to upload")]) -> dict[str, Any]:
     """Upload a single file to Amazon Photos. Deduplicates by MD5."""
     path = Path(file_path)
     if not path.exists():
@@ -49,7 +53,9 @@ def upload_file(file_path: str) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("upload_folder"))
 @_tool
-def upload_folder(folder_path: str) -> dict[str, Any]:
+def upload_folder(
+    folder_path: Annotated[str, Field(description="Absolute path to the directory to upload")],
+) -> dict[str, Any]:
     """Upload all photos/videos in a folder to Amazon Photos (recursive). Deduplicates by MD5."""
     path = Path(folder_path)
     if not path.exists():
