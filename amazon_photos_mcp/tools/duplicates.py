@@ -7,20 +7,16 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
 from amazon_photos_mcp.client import _get_client
 from amazon_photos_mcp.decorators import _tool
 from amazon_photos_mcp.server import _tool_annotations, mcp
 from amazon_photos_mcp.utils import _clean_row, _is_nan
 
 
-def _get_db(ap: Any) -> pd.DataFrame | None:
-    """Fetch all items and return a normalized DataFrame, or None if empty."""
+def _get_items(ap: Any) -> list[dict] | None:
+    """Fetch all items and return a list, or None if empty."""
     items = ap.query("type:(PHOTOS OR VIDEOS)")
-    if not items:
-        return None
-    return pd.json_normalize(items)
+    return items if items else None
 
 
 @mcp.tool(annotations=_tool_annotations("find_duplicates"))
@@ -28,42 +24,36 @@ def _get_db(ap: Any) -> pd.DataFrame | None:
 def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
     """Find exact duplicate files in your library by MD5 hash. Read-only."""
     ap = _get_client()
-    db = _get_db(ap)
-    if db is None or db.empty:
+    items = _get_items(ap)
+    if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-    if "md5" not in db.columns:
-        return {
-            "error": True,
-            "code": "SCHEMA_ERROR",
-            "message": "md5 column missing. Call check_connection to rebuild.",
-        }
+        md5_groups: dict[str, list[dict]] = {}
+    for item in items:
+        md5 = item.get("md5")
+        if md5:
+            md5_groups.setdefault(str(md5), []).append(item)
+    dupe_md5s = {md5 for md5, grp in md5_groups.items() if len(grp) > 1}
 
-    md5_counts = db.groupby("md5").size()
-    dupe_md5s = md5_counts[md5_counts > 1]
-
-    if dupe_md5s.empty:
+    if not dupe_md5s:
         return {"total_duplicate_files": 0, "removable_copies": 0, "groups": []}
 
-    total_files = int(dupe_md5s.sum())
-    removable = int(total_files - len(dupe_md5s))
-    dupe_rows = db[db["md5"].isin(dupe_md5s.index)].copy()
+    total_files = sum(len(md5_groups[md5]) for md5 in dupe_md5s)
+    removable = total_files - len(dupe_md5s)
 
     groups: list[dict[str, Any]] = []
-    for md5_hash, group_df in dupe_rows.groupby("md5"):
+    for md5_hash in sorted(dupe_md5s):
         if len(groups) >= max_groups:
             break
-        files: list[dict[str, Any]] = []
-        for _, row in group_df.iterrows():
-            files.append(
-                {
-                    "id": row.get("id"),
-                    "name": row.get("name"),
-                    "folder": row.get("parentMap.FOLDER") if not _is_nan(row.get("parentMap.FOLDER")) else None,
-                    "createdDate": str(row.get("createdDate")) if not _is_nan(row.get("createdDate")) else None,
-                    "size": int(row["size"]) if not _is_nan(row.get("size")) else None,
-                }
-            )
+        files = []
+        for item in md5_groups[md5_hash]:
+            files.append({
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "folder": item.get("parentMap", {}).get("FOLDER"),
+                "createdDate": str(item["createdDate"]) if item.get("createdDate") else None,
+                "size": int(item["size"]) if item.get("size") is not None else None,
+            })
         files.sort(key=lambda f: f["createdDate"] or "")
         groups.append({"md5": str(md5_hash), "count": len(files), "files": files})
 
@@ -83,18 +73,15 @@ def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
 def preview_duplicate_group(md5_hash: str) -> dict[str, Any]:
     """Show all copies of an MD5 hash with full metadata, oldest first."""
     ap = _get_client()
-    db = _get_db(ap)
-    if db is None or db.empty:
+    items = _get_items(ap)
+    if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-    if "md5" not in db.columns:
-        return {"error": True, "code": "SCHEMA_ERROR", "message": "md5 column not found in database."}
-
-    group = db[db["md5"] == md5_hash]
-    if group.empty:
+    group = [item for item in items if item.get("md5") == md5_hash]
+    if not group:
         return {"error": True, "code": "NOT_FOUND", "message": f"No files found with md5={md5_hash}"}
 
-    records = [_clean_row(r) for r in group.to_dict(orient="records")]
+    records = [_clean_row(r) for r in group]
     records.sort(key=lambda r: str(r.get("createdDate") or ""))
     return {
         "md5": md5_hash,
@@ -127,27 +114,23 @@ def find_near_duplicates(
     from amazon_photos_mcp.phash import find_near_duplicates as _find_near
 
     ap = _get_client()
-    db = _get_db(ap)
-    if db is None or db.empty:
+    items = _get_items(ap)
+    if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
-    if db is None or (hasattr(db, "empty") and db.empty):
+    if not items:
         return {"status": "no_data", "message": "Database is empty. Run search_photos or check_connection first."}
 
-    if "contentType" in db.columns:
-        photos = db[db["contentType"].str.contains("image", na=False)].head(sample_size)
-    else:
-        photos = db.head(sample_size)
-
-    if photos.empty:
+    photos = [item for item in items if "image" in str(item.get("contentType", "")).lower()][:sample_size]
+    if not photos:
         return {"status": "no_photos", "message": "No photos found in database."}
 
     file_hashes: dict[str, str] = {}
     # Map downloaded filenames back to node IDs for accurate group results
     name_to_id: dict[str, str] = {}
-    for _, row in photos.iterrows():
-        name = str(row.get("name", row.get("id", "")))
-        node_id = str(row["id"])
+    for item in photos:
+        name = str(item.get("name", item.get("id", "")))
+        node_id = str(item["id"])
         name_to_id.setdefault(name, node_id)
         stem = Path(name).stem
         name_to_id.setdefault(stem, node_id)
@@ -155,7 +138,7 @@ def find_near_duplicates(
     temp_dir = Path(tempfile.mkdtemp(prefix="ap-phash-"))
 
     try:
-        photo_ids = photos["id"].tolist()
+        photo_ids = [item["id"] for item in photos]
         ap.download(photo_ids, out=str(temp_dir))
 
         for f in temp_dir.iterdir():
@@ -187,18 +170,15 @@ def find_near_duplicates(
 def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str, Any]:
     """Keep a specific copy and trash all other duplicates in an MD5 group."""
     ap = _get_client()
-    db = _get_db(ap)
-    if db is None or db.empty:
+    items = _get_items(ap)
+    if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-    if "md5" not in db.columns:
-        return {"error": True, "code": "SCHEMA_ERROR", "message": "md5 column not found in database."}
-
-    group = db[db["md5"] == md5_hash]
-    if group.empty:
+    group = [item for item in items if item.get("md5") == md5_hash]
+    if not group:
         return {"error": True, "code": "NOT_FOUND", "message": f"No files found with md5={md5_hash}"}
 
-    trash_ids = [row.get("id") for _, row in group.iterrows() if row.get("id") and row.get("id") != keep_id]
+    trash_ids = [item.get("id") for item in group if item.get("id") and item.get("id") != keep_id]
 
     if not trash_ids:
         return {"status": "nothing_to_do", "message": "Only one copy found or keep_id is not in this group."}
@@ -230,15 +210,16 @@ def trash_duplicates(
 ) -> dict[str, Any]:
     """Trash duplicate copies, keeping the oldest of each MD5 group."""
     ap = _get_client()
-    db = _get_db(ap)
-    if db is None or db.empty:
+    items = _get_items(ap)
+    if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-    if "md5" not in db.columns:
-        return {"error": True, "code": "SCHEMA_ERROR", "message": "md5 column not found in database."}
-
-    md5_counts = db.groupby("md5").size()
-    dupe_md5s = set(md5_counts[md5_counts > 1].index)
+        md5_groups_dup: dict[str, list[dict]] = {}
+    for item in items:
+        md5 = item.get("md5")
+        if md5:
+            md5_groups_dup.setdefault(str(md5), []).append(item)
+    dupe_md5s = {md5 for md5, grp in md5_groups_dup.items() if len(grp) > 1}
 
     if md5_hashes is not None:
         dupe_md5s = dupe_md5s & set(md5_hashes)
@@ -253,17 +234,15 @@ def trash_duplicates(
             "message": "No duplicates found to process.",
         }
 
-    dupe_rows = db[db["md5"].isin(dupe_md5s)].copy()
     trash_ids: list[str] = []
     keep_ids: list[str] = []
 
-    for _, group_df in dupe_rows.groupby("md5"):
-        # Sort NaN-dated items first so they get trashed, not kept.
-        # Items with unknown creation dates should not be auto-kept.
-        sorted_group = group_df.sort_values("createdDate", ascending=True, na_position="first")
-        keep_ids.append(sorted_group.iloc[0].get("id"))
-        for _, row in sorted_group.iloc[1:].iterrows():
-            rid = row.get("id")
+    for md5_hash in sorted(dupe_md5s):
+        group = md5_groups_dup[md5_hash]
+        group.sort(key=lambda i: str(i.get("createdDate") or ""))
+        keep_ids.append(group[0].get("id"))
+        for item in group[1:]:
+            rid = item.get("id")
             if rid:
                 trash_ids.append(rid)
 
@@ -280,9 +259,9 @@ def trash_duplicates(
             f"Would trash {len(trash_ids)} duplicate copies across {len(dupe_md5s)} groups. "
             "Set dry_run=False to execute."
         )
-        sample = db[db["id"].isin(trash_ids[:10])]
         result["sample_trashed"] = [
-            {"id": r["id"], "name": r.get("name"), "md5": r.get("md5")} for _, r in sample.iterrows()
+            {"id": item["id"], "name": item.get("name"), "md5": item.get("md5")}
+            for item in items if item.get("id") in trash_ids[:10]
         ]
     else:
         ap.trash(trash_ids)
@@ -311,20 +290,19 @@ def trash_near_duplicates(
             "newest" - keeps the newest
     """
     ap = _get_client()
-    db = _get_db(ap)
-    if db is None or db.empty:
+    items = _get_items(ap)
+    if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
     if len(group) <= 1:
         return {"status": "nothing_to_do", "message": "Group has only 0-1 items; nothing to trash."}
 
     # Find group items in DB
-    group_rows = db[db["id"].isin(group)]
-    if group_rows.empty:
+    group_rows = [item for item in items if item.get("id") in group]
+    if not group_rows:
         return {"status": "error", "message": "None of the provided node IDs were found in the database."}
 
-    items = group_rows.to_dict(orient="records")
-    items = [_clean_row(r) for r in items]
+    items = [_clean_row(r) for r in group_rows]
 
     if keep_strategy == "oldest":
         items.sort(key=lambda r: str(r.get("createdDate") or ""))
@@ -338,8 +316,8 @@ def trash_near_duplicates(
             ct = str(item.get("contentType", "")).lower()
             type_score = 3 if "jpeg" in ct else (2 if "heic" in ct or "heif" in ct else 1)
             size = int(item.get("size", 0) or 0)
-            w = int(item.get("image.width", 0) or 0)
-            h = int(item.get("image.height", 0) or 0)
+            w = int(item.get("image", {}).get("width", 0) or 0)
+            h = int(item.get("image", {}).get("height", 0) or 0)
             return (type_score, size, w * h)
 
         items.sort(key=_quality_score, reverse=True)
@@ -360,7 +338,7 @@ def trash_near_duplicates(
         "keep_score": {
             "contentType": keep.get("contentType"),
             "size": keep.get("size"),
-            "resolution": f"{keep.get('image.width', '?')}x{keep.get('image.height', '?')}",
+            "resolution": f"{keep.get('image', {}).get('width', '?')}x{keep.get('image', {}).get('height', '?')}",
         },
         "trash_ids": trash_ids,
     }
