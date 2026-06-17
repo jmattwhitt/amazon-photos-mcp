@@ -645,16 +645,16 @@ class TestGetExifData:
                 "name": "photo.jpg",
                 "md5": "aaa",
                 "size": 1024,
-                "image.width": 4000,
-                "camera.make": "Canon",
+                "image": {"width": 4000},
+                "camera": {"make": "Canon"},
             }
         ]
         result = media.get_exif_data("node-001")
         print("RESULT EXIF:", result)
         assert result.get("source") == "local_db" or result.get("error") is True
-        assert "image.width" in result["exif"]
-        assert result["exif"]["image.width"] == 4000
-        assert result["exif"]["camera.make"] == "Canon"
+        assert "width" in result["exif"]
+        assert result["exif"]["width"] == 4000
+        assert result["exif"]["camera"]["make"] == "Canon"
 
     def test_api_fails_db_fallback_no_match(self, mock_ap):
         """API fails and node_id not in DB -- return empty exif with note."""

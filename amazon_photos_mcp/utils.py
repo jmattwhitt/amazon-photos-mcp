@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 
 PIPELINE_DEFAULT_DIR = os.environ.get(
     "AMAZON_PHOTOS_PIPELINE_DIR",
@@ -29,8 +28,10 @@ SLIM_FIELDS = {
 
 
 def _is_nan(v: Any) -> bool:
+    if v is None:
+        return True
     try:
-        if pd.isna(v):
+        if isinstance(v, float) and v != v:
             return True
     except (TypeError, ValueError):
         pass
