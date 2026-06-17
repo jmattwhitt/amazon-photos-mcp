@@ -379,6 +379,8 @@ def download_library(
 
         if organize_by == "year_month":
             batch_items = items[i : i + batch_size]
+            # Group batch items by date for correct per-date subdirectories
+            date_groups: dict[str, list[str]] = {}
             for j, nid in enumerate(batch):
                 if j < len(batch_items):
                     created_raw = batch_items[j].get("createdDate", "")
@@ -392,20 +394,28 @@ def download_library(
                 date_dir = "unknown"
                 if isinstance(created, str) and len(created) >= 7:
                     date_dir = f"{created[:4]}/{created[5:7]}"
+                date_groups.setdefault(date_dir, []).append(nid)
+
+            for date_dir, date_ids in date_groups.items():
                 batch_out = out / date_dir
                 batch_out.mkdir(parents=True, exist_ok=True)
+                try:
+                    ap.download(date_ids, out=str(batch_out))
+                    downloaded += len(date_ids)
+                except Exception as e:
+                    failed.extend(date_ids)
+                    from amazon_photos_mcp.logging import log_error
+                    log_error("download_library date group %s failed: %s", date_dir, e)
         else:
             batch_out = out
             batch_out.mkdir(parents=True, exist_ok=True)
-
-        try:
-            ap.download(batch, out=str(batch_out))
-            downloaded += len(batch)
-        except Exception as e:
-            failed.extend(batch)
-            from amazon_photos_mcp.logging import log_error
-
-            log_error("download_library batch %d/%d failed: %s", batch_idx + 1, num_batches, e)
+            try:
+                ap.download(batch, out=str(batch_out))
+                downloaded += len(batch)
+            except Exception as e:
+                failed.extend(batch)
+                from amazon_photos_mcp.logging import log_error
+                log_error("download_library batch %d/%d failed: %s", batch_idx + 1, num_batches, e)
 
         # Write progress file
         if progress_path:
