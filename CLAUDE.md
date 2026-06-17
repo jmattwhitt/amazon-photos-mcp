@@ -100,5 +100,6 @@ def test_using_force_refresh(self, mock_ap):
 
 Project memories live at `~/.claude/projects/C--AI-code-amazon-photos-mcp/memory/`:
 - `code-review-2026-06-07.md` — 7 bugs found and fixed in June 2026 review
+- `code-review-2026-06-17.md` — 21 findings: resilience, error handling, test coverage, curl-cffi
 - `test-architecture.md` — autouse fixture trap details
 - `upstream-library-internals.md` — verified internals of the pinned library
