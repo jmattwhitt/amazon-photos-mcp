@@ -105,22 +105,21 @@ def get_thumbnail(
 
     if max_size <= 0:
         max_size = int(get_config("thumbnail_max_size", default=400))
-    import httpx
+    from curl_cffi import requests as curl_req
 
     ap = _get_client()
     result = ap.get_file(node_id)
     url = None
 
-    if hasattr(result, "json"):
-        data = result.json()
-        url = data.get("tempLink") or data.get("contentUrl") or data.get("url")
+    if isinstance(result, dict):
+        url = result.get("tempLink") or result.get("contentUrl") or result.get("url")
 
     if not url:
         return {"node_id": node_id, "thumbnail": None, "error": "Could not resolve download URL."}
 
     try:
         http_client = getattr(ap, "client", None)
-        s = http_client if http_client is not None else httpx.Client()
+        s = http_client if http_client is not None else curl_req.Session()
 
         with s.stream("GET", url, timeout=30) as r:
             r.raise_for_status()
@@ -135,7 +134,7 @@ def get_thumbnail(
                 }
 
             size_limit = 50 * 1024 * 1024  # 50 MB
-            content = r.read()
+            content = r.content
             if len(content) > size_limit:
                 return {
                     "node_id": node_id,

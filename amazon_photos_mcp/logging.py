@@ -1,7 +1,7 @@
 """Structured logging for amazon-photos-mcp.
 
 Configured via environment variables:
-  AMAZON_PHOTOS_LOG_LEVEL  — DEBUG, INFO, WARNING, ERROR (default: INFO)
+  AMAZON_PHOTOS_LOG_LEVEL  — TRACE, DEBUG, INFO, WARNING, ERROR (default: TRACE)
   AMAZON_PHOTOS_LOG_FILE   — file path for log output (default: stderr only)
 """
 
@@ -13,6 +13,10 @@ import sys
 import time
 from typing import Any
 
+# Add TRACE log level (between NOTSET=0 and DEBUG=10)
+logging.TRACE = 5  # type: ignore[attr-defined]
+logging.addLevelName(5, "TRACE")
+
 _logger: logging.Logger | None = None
 
 
@@ -22,7 +26,7 @@ def get_logger() -> logging.Logger:
     if _logger is not None:
         return _logger
 
-    level_name = os.environ.get("AMAZON_PHOTOS_LOG_LEVEL", "INFO").upper()
+    level_name = os.environ.get("AMAZON_PHOTOS_LOG_LEVEL", "TRACE").upper()
     level = getattr(logging, level_name, logging.INFO)
 
     _logger = logging.getLogger("amazon-photos-mcp")
@@ -104,3 +108,9 @@ def log_error(msg: str, *args: Any) -> None:
 
 def log_info(msg: str, *args: Any) -> None:
     get_logger().info(msg, *args)
+
+
+def trace(msg: str, *args: Any) -> None:
+    """Log at TRACE level."""
+    log = get_logger()
+    log.log(5, msg, *args)
