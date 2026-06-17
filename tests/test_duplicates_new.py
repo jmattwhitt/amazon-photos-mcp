@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
 from amazon_photos_mcp.tools.duplicates import trash_near_duplicates
 
 
@@ -18,27 +16,24 @@ def test_trash_near_duplicates_quality_scoring(mock_get_client):
             "name": "img1.heic",
             "contentType": "image/heic",
             "size": 1000,
-            "image.width": 100,
-            "image.height": 100,
+            "image": {"width": 100, "height": 100},
         },
         {
             "id": "node2",
             "name": "img2.jpg",
             "contentType": "image/jpeg",
             "size": 500,
-            "image.width": 50,
-            "image.height": 50,
+            "image": {"width": 50, "height": 50},
         },
         {
             "id": "node3",
             "name": "img3.jpg",
             "contentType": "image/jpeg",
             "size": 2000,
-            "image.width": 200,
-            "image.height": 200,
+            "image": {"width": 200, "height": 200},
         },
     ]
-    mock_ap.query.return_value = pd.DataFrame(items)
+    mock_ap.query.return_value = items
     mock_get_client.return_value = mock_ap
 
     res = trash_near_duplicates(group=["node1", "node2", "node3"], dry_run=True, keep_strategy="best_quality")
@@ -53,6 +48,6 @@ def test_trash_near_duplicates_quality_scoring(mock_get_client):
         {"id": "node1", "createdDate": "2024-02-01"},
         {"id": "node2", "createdDate": "2024-01-01"},  # Oldest
     ]
-    mock_ap.query.return_value = pd.DataFrame(items2)
+    mock_ap.query.return_value = items2
     trash_near_duplicates(group=["node1", "node2"], dry_run=True, keep_strategy="oldest")
     pass

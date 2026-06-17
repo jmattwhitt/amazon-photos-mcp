@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
 from amazon_photos_mcp.tools.media import download_library
 
 
@@ -10,7 +8,7 @@ def test_download_library_batching(mock_get_client):
     mock_ap = MagicMock()
     # Create 300 items to test batching (batch size is 200)
     items = [{"id": f"node{i}", "createdDate": "2024-01-01T00:00:00Z"} for i in range(300)]
-    mock_ap.photos.return_value = pd.DataFrame(items)
+    mock_ap.photos.return_value = items
     mock_get_client.return_value = mock_ap
 
     # Mock download to succeed

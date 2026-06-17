@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -34,7 +34,7 @@ def cookie_file(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_db() -> pd.DataFrame:
+def _make_mock_db() -> list[dict[str, Any]]:
     """Build a minimal parquet-like DataFrame for testing."""
     return [
         {
