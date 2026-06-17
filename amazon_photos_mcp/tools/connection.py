@@ -7,6 +7,7 @@ from typing import Any
 from amazon_photos_mcp import client as mod_client
 from amazon_photos_mcp.client import _get_client
 from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.errors import AuthenticationError
 from amazon_photos_mcp.server import _tool_annotations, mcp
 
 
@@ -57,19 +58,23 @@ def validate_cookies() -> dict[str, Any]:
         }
     try:
         ap = _get_client()
-        result = ap.usage()
-        ok = not (hasattr(result, "status_code") and result.status_code in (401, 403))
+        ap.usage()  # 401 raises AuthenticationError in _request_with_retry
         return {
-            "valid": ok,
+            "valid": True,
             "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,
             "advice": mod_client.cookie_advice(),
         }
-    except Exception as e:
-        s = str(e).lower()
-        auth_fail = any(x in s for x in ("401", "403", "unauthorized", "forbidden", "expired"))
+    except AuthenticationError:
         return {
             "valid": False,
             "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,
             "advice": mod_client.cookie_advice(),
-            "error": str(e) if not auth_fail else "Auth rejected by Amazon -- cookies expired.",
+            "error": "Auth rejected by Amazon -- cookies expired.",
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,
+            "advice": mod_client.cookie_advice(),
+            "error": str(e),
         }
