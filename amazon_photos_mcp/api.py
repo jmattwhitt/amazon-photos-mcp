@@ -35,7 +35,7 @@ class AmazonPhotosClient:
         session_id = cookies.get("session-id", "")
 
         # Configure curl_cffi session with browser impersonation
-        self.client = curl_req.Session()
+        self.client: Any = curl_req.Session()
         self.client.headers.update({
             "user-agent": random.choice(USER_AGENTS),
             "x-amzn-sessionid": session_id,
