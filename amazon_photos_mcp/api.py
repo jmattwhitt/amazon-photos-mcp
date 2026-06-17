@@ -23,7 +23,7 @@ class AmazonPhotosClient:
     def __init__(self, cookies: dict[str, str]):
         self.tld = self._determine_tld(cookies)
         self.drive_url = f"https://www.amazon.{self.tld}/drive/v1"
-        self.base_params = {
+        self.base_params: dict[str, Any] = {
             "asset": "ALL",
             "tempLink": "false",
             "resourceVersion": "V2",
@@ -41,7 +41,7 @@ class AmazonPhotosClient:
         if cookies:
             self.client.cookies.update(cookies)
         self._cookies = cookies
-        self._root_node = None
+        self._root_node: dict[str, Any] | None = None
 
     def _determine_tld(self, cookies: dict[str, str]) -> str:
         if "ubid-acbca" in cookies or "at-acbca" in cookies:
@@ -97,7 +97,7 @@ class AmazonPhotosClient:
     def usage(self) -> Dict[str, Any]:
         """Get account usage stats."""
         resp = self.request("GET", f"{self.drive_url}/account/usage", params=self.base_params)
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
     def get_root(self) -> Dict[str, Any]:
         """Get the root node for the account to find the ownerId."""
@@ -115,18 +115,18 @@ class AmazonPhotosClient:
     def get_file(self, node_id: str) -> Dict[str, Any]:
         """Get metadata for a specific node."""
         resp = self.request("GET", f"{self.drive_url}/nodes/{node_id}", params=self.base_params)
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
     def query(
         self,
         filters: str = "type:(PHOTOS OR VIDEOS)",
         offset: int = 0,
-        limit: int = float("inf"),
+        limit: float = float("inf"),
         sort: str = "['createdDate DESC']",
-        **kwargs,
+        **kwargs: Any,
     ) -> List[Dict[str, Any]]:
         """Search media with filters and automatically paginate to return all matching results."""
-        results = []
+        results: list[dict[str, Any]] = []
         current_offset = offset
         page_limit = 200
 
@@ -153,10 +153,10 @@ class AmazonPhotosClient:
 
         return results
 
-    def photos(self, **kwargs) -> List[Dict[str, Any]]:
+    def photos(self, **kwargs: Any) -> List[Dict[str, Any]]:
         return self.query("type:(PHOTOS)", **kwargs)
 
-    def videos(self, **kwargs) -> List[Dict[str, Any]]:
+    def videos(self, **kwargs: Any) -> List[Dict[str, Any]]:
         return self.query("type:(VIDEOS)", **kwargs)
 
     def trash(self, node_ids: List[str], filters: str = "") -> List[Dict[str, Any]]:
@@ -272,7 +272,7 @@ class AmazonPhotosClient:
         )
         return resp.json().get("data", [])  # type: ignore[no-any-return]
 
-    def create_album(self, album_name: str, node_ids: List[str] = None) -> Dict[str, Any]:
+    def create_album(self, album_name: str, node_ids: list[str] | None = None) -> Dict[str, Any]:
         """Create a new album."""
         resp = self.request(
             "POST",
@@ -282,7 +282,7 @@ class AmazonPhotosClient:
         album = resp.json()
         if node_ids:
             self.add_to_album(album["id"], node_ids)
-        return album
+        return album  # type: ignore[no-any-return]
 
     def add_to_album(self, album_id: str, node_ids: List[str]) -> Dict[str, Any]:
         """Add media to an album."""
@@ -291,7 +291,7 @@ class AmazonPhotosClient:
             f"{self.drive_url}/nodes/{album_id}/children",
             json={"op": "add", "value": node_ids, "resourceVersion": "V2", "ContentType": "JSON"},
         )
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
     def remove_from_album(self, album_id: str, node_ids: List[str]) -> Dict[str, Any]:
         """Remove media from an album."""
@@ -300,7 +300,7 @@ class AmazonPhotosClient:
             f"{self.drive_url}/nodes/{album_id}/children",
             json={"op": "remove", "value": node_ids, "resourceVersion": "V2", "ContentType": "JSON"},
         )
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
     def aggregations(self, category: str) -> List[Dict[str, Any]]:
         """Get aggregations (e.g., allPeople, things, locations).
@@ -321,7 +321,7 @@ class AmazonPhotosClient:
             f"{self.drive_url}/cluster/name",
             json={"sourceCluster": cluster_id, "newName": name, "context": "all", "ContentType": "JSON"},
         )
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
     def merge_clusters(self, target_cluster_id: str, source_cluster_ids: List[str]) -> Dict[str, Any]:
         """Merge multiple person clusters into one."""
@@ -335,7 +335,7 @@ class AmazonPhotosClient:
                 "ContentType": "JSON",
             },
         )
-        return resp.json()
+        return resp.json()  # type: ignore[no-any-return]
 
     def download_stream(self, node_id: str) -> Generator[bytes, None, None]:
         """Yields bytes for downloading a node. Generator function."""

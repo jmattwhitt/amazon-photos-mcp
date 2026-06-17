@@ -55,11 +55,8 @@ def set_hidden(node_ids: list[str], hidden: bool = True) -> dict[str, Any]:
     else:
         result = ap.unhide(node_ids)
         action = "unhidden"
-    if hasattr(result, "json"):
-        data: dict[str, Any] = result.json()
-        data.setdefault("action", action)
-        data.setdefault("count", len(node_ids))
-        return data
+    if isinstance(result, (dict, list)):
+        return {"status": "success", "data": result, "action": action, "count": len(node_ids)}
     return {"status": "ok", "action": action, "count": len(node_ids), "node_ids": node_ids}
 
 
