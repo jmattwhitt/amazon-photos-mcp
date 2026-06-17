@@ -146,20 +146,7 @@ def _wrap_http_errors(client: Any) -> None:
         def _patched_stream(method: str, url: str, **kwargs: Any) -> Any:
             check_rate_limit()
             kwargs.setdefault("timeout", 30.0)
-            try:
-                resp = orig_stream(method, url, **kwargs)
-                if hasattr(resp, "status_code"):
-                    if resp.status_code in (429, 503):
-                        if _global_circuit is not None:
-                            _global_circuit.record_failure()
-                    elif resp.status_code < 500:
-                        if _global_circuit is not None:
-                            _global_circuit.record_success()
-                return resp
-            except Exception:
-                if _global_circuit is not None:
-                    _global_circuit.record_failure()
-                raise
+            return orig_stream(method, url, **kwargs)
 
         http_client.request = _patched_request
         http_client.stream = _patched_stream
