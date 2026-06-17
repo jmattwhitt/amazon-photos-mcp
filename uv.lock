@@ -49,6 +49,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psutil" },
     { name = "pyarrow" },
+    { name = "pydantic-settings" },
     { name = "tqdm" },
 ]
 
@@ -84,6 +85,7 @@ requires-dist = [
     { name = "playwright", marker = "extra == 'scripts'", specifier = ">=1.50" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pyarrow" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },

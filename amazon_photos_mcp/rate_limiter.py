@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from threading import Lock
 
+from amazon_photos_mcp.config import settings
+
 
 class TokenBucket:
     """Thread-safe token bucket for rate limiting."""
@@ -105,10 +107,8 @@ def check_rate_limit() -> None:
     if _global_bucket is None:
         with _bucket_lock:
             if _global_bucket is None:
-                from amazon_photos_mcp.config import get_config
-
-                rate = float(get_config("rate_limit", default=5.0))
-                cap = int(get_config("rate_capacity", default=10))
+                rate = settings.rate_limit
+                cap = settings.rate_capacity
                 _global_bucket = TokenBucket(rate=rate, capacity=cap)
                 _global_circuit = CircuitBreaker()
 

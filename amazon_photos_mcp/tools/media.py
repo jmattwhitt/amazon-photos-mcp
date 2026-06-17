@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.config import settings
 from amazon_photos_mcp.decorators import _tool
 from amazon_photos_mcp.server import _tool_annotations, mcp
 from amazon_photos_mcp.tools.search import _sanitize_query_value
@@ -97,10 +98,8 @@ def get_thumbnail(
         max_size: Maximum dimension (width or height) in pixels. Default 0 = use
                   thumbnail_max_size from config (defaults to 400).
     """
-    from amazon_photos_mcp.config import get_config
-
     if max_size <= 0:
-        max_size = int(get_config("thumbnail_max_size", default=400))
+        max_size = settings.thumbnail_max_size
     from curl_cffi import requests as curl_req
 
     ap = _get_client()
