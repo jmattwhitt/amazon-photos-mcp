@@ -23,7 +23,7 @@ class TestMCPProtocol:
         assert "search_photos" in tool_names
         assert "find_duplicates" in tool_names
         assert "download" in tool_names or "download_files" in tool_names
-        assert len(tool_names) >= 25
+        assert len(tool_names) >= 40
 
     async def test_tool_has_input_schema(self) -> None:
         from amazon_photos_mcp import mcp
@@ -70,10 +70,9 @@ class TestMCPProtocol:
                 ann = tool.annotations
                 if ann is not None:
                     ro = getattr(ann, "readOnlyHint", None)
-                    if ro is not None:
-                        assert ro is True, f"{tool.name} should have readOnlyHint=True, got {ro}"
+                    assert ro is not False, f"{tool.name} should have readOnlyHint=True, got {ro}"
 
-    async def test_tool_errors_return_headable_messages(self) -> None:
+    async def test_tool_errors_return_readable_messages(self) -> None:
         from amazon_photos_mcp import mcp
 
         result = await mcp.call_tool(
@@ -95,30 +94,30 @@ class TestToolSchemaValidation:
 
         tools = await mcp.list_tools()
         sf = next((t for t in tools if t.name == "set_favorite"), None)
-        if sf:
-            props = sf.parameters.get("properties", {})
-            assert "favorite" in props, "set_favorite should have 'favorite' param"
-            assert "boolean" in props["favorite"].get("type", ""), (
-                f"'favorite' should be boolean, got {props['favorite']}"
-            )
+        assert sf is not None, "set_favorite tool not found"
+        props = sf.parameters.get("properties", {})
+        assert "favorite" in props, "set_favorite should have 'favorite' param"
+        assert "boolean" in props["favorite"].get("type", ""), (
+            f"'favorite' should be boolean, got {props['favorite']}"
+        )
 
     async def test_set_hidden_schema_has_boolean_parameter(self) -> None:
         from amazon_photos_mcp import mcp
 
         tools = await mcp.list_tools()
         sh = next((t for t in tools if t.name == "set_hidden"), None)
-        if sh:
-            props = sh.parameters.get("properties", {})
-            assert "hidden" in props, "set_hidden should have 'hidden' param"
-            assert "boolean" in props["hidden"].get("type", ""), f"'hidden' should be boolean, got {props['hidden']}"
+        assert sh is not None, "set_hidden tool not found"
+        props = sh.parameters.get("properties", {})
+        assert "hidden" in props, "set_hidden should have 'hidden' param"
+        assert "boolean" in props["hidden"].get("type", ""), f"'hidden' should be boolean, got {props['hidden']}"
 
     async def test_download_schema_has_flexible_params(self) -> None:
         from amazon_photos_mcp import mcp
 
         tools = await mcp.list_tools()
         dl = next((t for t in tools if t.name == "download"), None)
-        if dl:
-            props = dl.parameters.get("properties", {})
-            assert "node_ids" in props
-            assert "query" in props
-            assert "year" in props, "download should have year param"
+        assert dl is not None, "download tool not found"
+        props = dl.parameters.get("properties", {})
+        assert "node_ids" in props
+        assert "query" in props
+        assert "year" in props, "download should have year param"
