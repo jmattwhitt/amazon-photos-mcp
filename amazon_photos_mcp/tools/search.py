@@ -55,7 +55,7 @@ def search_photos(
 ) -> dict[str, Any]:
     """Search Amazon Photos by query string with optional filters (type, things, dates, etc.)."""
     ap = _get_client()
-    query_clean = _sanitize_query_value(query)
+    query_clean = query.strip()
     if not query_clean:
         return {"error": True, "code": "INVALID_ARGS", "message": "query parameter cannot be empty after sanitization."}
     items = ap.query(query_clean)
