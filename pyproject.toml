@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amazon-photos-mcp"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server for Amazon Photos — search, browse, upload, download, and manage your photo library"
 requires-python = ">=3.10.10"
 authors = [
