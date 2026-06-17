@@ -1,87 +1,73 @@
-"""Configuration system for amazon-photos-mcp.
+"""Configuration system for amazon-photos-mcp using Pydantic Settings.
 
 Supports both a config file (~/.config/amazon-photos-mcp/config.toml) and
-environment variables. Env vars take precedence over config file values.
-
-Config keys:
-  cookie_path          — path to cookies.json
-  db_path              — path to parquet database
-  pipeline_dir         — default download directory for pipeline
-  log_level            — DEBUG, INFO, WARNING, ERROR
-  log_file             — file path for log output
-  rate_limit           — requests per second
-  rate_capacity        — burst capacity
-  download_default_max — default max items for download
-  download_library_max — default max items for download_library
-  thumbnail_max_size   — default thumbnail max dimension
+environment variables with prefix AMAZON_PHOTOS_. Env vars take precedence.
 """
 
 from __future__ import annotations
 
-import os
-import threading
 from pathlib import Path
 from typing import Any
 
-_CONFIG_PATH = Path.home() / ".config" / "amazon-photos-mcp" / "config.toml"
-_cache: dict[str, Any] | None = None
-_cache_lock = threading.Lock()
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _load_config() -> dict[str, Any]:
-    """Load TOML config file if it exists."""
-    if not _CONFIG_PATH.exists():
-        return {}
-    try:
-        import tomllib
-    except ImportError:
-        try:
-            import tomli as tomllib
-        except ImportError:
-            return {}
-    try:
-        with open(_CONFIG_PATH, "rb") as f:
-            return tomllib.load(f)  # type: ignore[no-any-return]
-    except Exception:
-        return {}
+class Settings(BaseSettings):
+    """Application settings loaded from config file and environment variables."""
+
+    # Paths
+    cookie_path: str = str(Path.home() / ".config" / "amazon-photos-mcp" / "cookies.json")
+    db_path: str = ""
+    pipeline_dir: str = str(Path.home() / "Downloads" / "amazon-photos-pipeline")
+
+    # Logging
+    log_level: str = "TRACE"
+    log_file: str = ""
+
+    # Rate limiting
+    rate_limit: float = Field(default=5.0, ge=0)
+    rate_capacity: int = Field(default=10, ge=1)
+
+    # Downloads
+    download_default_max: int = Field(default=500, ge=1)
+    download_library_max: int = Field(default=5000, ge=1)
+
+    # Thumbnails
+    thumbnail_max_size: int = Field(default=400, ge=0)
+
+    model_config = SettingsConfigDict(
+        toml_file=Path.home() / ".config" / "amazon-photos-mcp" / "config.toml",
+        env_prefix="AMAZON_PHOTOS_",
+        extra="ignore",
+    )
 
 
-def _cache_config() -> dict[str, Any]:
-    global _cache
-    if _cache is None:
-        with _cache_lock:
-            if _cache is None:
-                _cache = _load_config()
-    return _cache
+settings = Settings()
 
 
-def get_config(key: str, default: Any = None, env_var: str = "") -> Any:
-    """Get a config value, checking env var first, then config file, then default.
-
-    Args:
-        key: Config key name (used in TOML file)
-        default: Default value if not found anywhere
-        env_var: Env variable name (auto-generated from key if empty)
-    """
-    # Env var takes precedence
-    env = env_var or _key_to_env(key)
-    val = os.environ.get(env)
-    if val is not None:
-        return _coerce(val, default)
-    # Fall back to config file
-    cfg = _cache_config()
-    if key in cfg:
-        return cfg[key]
-    return default
+def get_config(key: str) -> Any:
+    """Get a resolved config value by attribute name."""
+    return getattr(settings, key)
 
 
-def _key_to_env(key: str) -> str:
-    """Convert snake_case key to AMAZON_PHOTOS_* env var."""
-    return f"AMAZON_PHOTOS_{key.upper()}"
+def invalidate_cache() -> None:
+    """Re-read config from TOML file by re-initializing settings."""
+    global settings
+    settings = Settings()
+
+
+def list_all() -> dict[str, Any]:
+    """Return all resolved config values for display/debugging."""
+    return settings.model_dump()
 
 
 def _coerce(value: str, default: Any) -> Any:
-    """Coerce a string env var to the type of the default."""
+    """Coerce a string env var to the type of the default.
+
+    Legacy helper used by tests. Pydantic Settings handles coercion
+    natively for production paths.
+    """
     if isinstance(default, bool):
         return value.lower() in ("1", "true", "yes")
     if isinstance(default, int):
@@ -95,28 +81,3 @@ def _coerce(value: str, default: Any) -> Any:
         except (ValueError, TypeError):
             return default
     return value
-
-
-def invalidate_cache() -> None:
-    """Clear the config cache (allows re-reading after file changes)."""
-    global _cache
-    _cache = None
-
-
-_DEFAULTS: dict[str, Any] = {
-    "cookie_path": str(Path.home() / ".config" / "amazon-photos-mcp" / "cookies.json"),
-    "db_path": "",
-    "pipeline_dir": str(Path.home() / "Downloads" / "amazon-photos-pipeline"),
-    "log_level": "INFO",
-    "log_file": "",
-    "rate_limit": 5,
-    "rate_capacity": 10,
-    "download_default_max": 500,
-    "download_library_max": 5000,
-    "thumbnail_max_size": 400,
-}
-
-
-def list_all() -> dict[str, Any]:
-    """Return all resolved config values for display/debugging."""
-    return {key: get_config(key, default=default) for key, default in _DEFAULTS.items()}

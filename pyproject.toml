@@ -38,6 +38,7 @@ dependencies = [
     # Removed upstream git dependency: amazon-photos code is now vendored.
     "curl-cffi>=0.7.0,<1.0",
     "pyarrow",
+    "pydantic-settings>=2.0",
 ]
 
 [project.scripts]
