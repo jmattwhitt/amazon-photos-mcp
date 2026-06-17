@@ -1,0 +1,8 @@
+#!/bin/sh
+echo "Running pre-commit checks..."
+
+uv run ruff check . || { echo "ruff failed -- aborting commit"; exit 1; }
+
+uv run pytest -q --tb=short || { echo "pytest failed -- aborting commit"; exit 1; }
+
+echo "All checks passed."
