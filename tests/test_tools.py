@@ -698,7 +698,7 @@ class TestIsNan:
 
         assert _is_nan("hello") is False
         assert _is_nan(42) is False
-        assert _is_nan(None) is True  # None is NA in pandas
+        assert _is_nan(None) is True
 
 
 # ---------------------------------------------------------------------------
