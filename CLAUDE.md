@@ -10,9 +10,14 @@
 
 ## Commit Discipline
 
-**Tests and lint must pass before every commit.** A pre-commit hook in
-`.claude/settings.local.json` enforces this automatically — ruff check and
-pytest run before any `git commit` completes. Never bypass it with
+**Tests and lint must pass before every commit.** A git pre-commit hook at
+`.githooks/pre-commit` runs `ruff check . && pytest -q` automatically.
+Set it up after cloning:
+
+    git config core.hooksPath .githooks
+
+A Claude Code PreToolUse hook in `.claude/settings.local.json` provides
+the same enforcement when committing through Claude. Never bypass with
 `--no-verify`.
 
 Commit messages: imperative mood, <=72 char subject, body wraps at 72.
