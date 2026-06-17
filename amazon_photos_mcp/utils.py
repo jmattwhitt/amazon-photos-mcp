@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-
 PIPELINE_DEFAULT_DIR = os.environ.get(
     "AMAZON_PHOTOS_PIPELINE_DIR",
     str(Path.home() / "Downloads" / "amazon-photos-pipeline"),

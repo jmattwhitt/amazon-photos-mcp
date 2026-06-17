@@ -10,10 +10,10 @@ from typing import Any
 from amazon_photos_mcp.client import _get_client
 from amazon_photos_mcp.decorators import _tool
 from amazon_photos_mcp.server import _tool_annotations, mcp
-from amazon_photos_mcp.utils import _clean_row, _is_nan
+from amazon_photos_mcp.utils import _clean_row
 
 
-def _get_items(ap: Any) -> list[dict] | None:
+def _get_items(ap: Any) -> list[dict[str, Any]] | None:
     """Fetch all items and return a list, or None if empty."""
     items = ap.query("type:(PHOTOS OR VIDEOS)")
     return items if items else None
@@ -28,7 +28,7 @@ def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-        md5_groups: dict[str, list[dict]] = {}
+        md5_groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         md5 = item.get("md5")
         if md5:
@@ -178,7 +178,7 @@ def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str
     if not group:
         return {"error": True, "code": "NOT_FOUND", "message": f"No files found with md5={md5_hash}"}
 
-    trash_ids = [item.get("id") for item in group if item.get("id") and item.get("id") != keep_id]
+    trash_ids: list[str] = [str(item["id"]) for item in group if item.get("id") and item.get("id") != keep_id]
 
     if not trash_ids:
         return {"status": "nothing_to_do", "message": "Only one copy found or keep_id is not in this group."}
@@ -214,7 +214,7 @@ def trash_duplicates(
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-        md5_groups_dup: dict[str, list[dict]] = {}
+        md5_groups_dup: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         md5 = item.get("md5")
         if md5:
@@ -240,10 +240,12 @@ def trash_duplicates(
     for md5_hash in sorted(dupe_md5s):
         group = md5_groups_dup[md5_hash]
         group.sort(key=lambda i: str(i.get("createdDate") or ""))
-        keep_ids.append(group[0].get("id"))
+        keep_id_val = group[0].get("id")
+        if isinstance(keep_id_val, str):
+            keep_ids.append(keep_id_val)
         for item in group[1:]:
             rid = item.get("id")
-            if rid:
+            if isinstance(rid, str):
                 trash_ids.append(rid)
 
     result: dict[str, Any] = {
