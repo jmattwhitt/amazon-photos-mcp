@@ -37,7 +37,7 @@ dependencies = [
     "psutil>=5.9.0",
     "tqdm>=4.65.0",
     # Removed upstream git dependency: amazon-photos code is now vendored.
-    "httpx",
+    "curl-cffi>=0.7.0,<1.0",
     "pyarrow",
 ]
 

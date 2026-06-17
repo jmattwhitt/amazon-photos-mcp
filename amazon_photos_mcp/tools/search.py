@@ -35,6 +35,18 @@ def _resolve_person_cluster(ap: Any, person: str) -> str | None:
     return None
 
 
+def _validate_date(d: str) -> str | None:
+    """Validate and normalize an ISO date string. Returns YYYYMMDD or None."""
+    if not d:
+        return None
+    # Accept YYYYMMDD or YYYY-MM-DD; reject anything else
+    if re.match(r"^\d{8}$", d):
+        return d
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", d):
+        return d.replace("-", "")
+    return None
+
+
 @mcp.tool(annotations=_tool_annotations("search_photos"))
 @_tool
 def search_photos(
@@ -191,16 +203,6 @@ def advanced_search(
     else:
         parts.append("type:(PHOTOS)")
 
-    def _validate_date(d: str) -> str | None:
-        if not d:
-            return None
-        # Accept YYYYMMDD or YYYY-MM-DD; reject anything else
-        if re.match(r"^\d{8}$", d):
-            return d
-        if re.match(r"^\d{4}-\d{2}-\d{2}$", d):
-            return d.replace("-", "")
-        return None
-
     date_from_clean = _validate_date(date_from)
     date_to_clean = _validate_date(date_to)
 
@@ -256,15 +258,15 @@ def advanced_search(
 
     # Favorite filter
     if is_favorite is True and "settings.favorite" in df.columns:
-        df = df[df["settings.favorite"] == True]  # noqa: E712
+        df = df[df["settings.favorite"]]
     elif is_favorite is False and "settings.favorite" in df.columns:
-        df = df[df["settings.favorite"] != True]  # noqa: E712
+        df = df[~df["settings.favorite"]]
 
     # Hidden filter
     if is_hidden is True and "settings.hidden" in df.columns:
-        df = df[df["settings.hidden"] == True]  # noqa: E712
+        df = df[df["settings.hidden"]]
     elif is_hidden is False and "settings.hidden" in df.columns:
-        df = df[df["settings.hidden"] != True]  # noqa: E712
+        df = df[~df["settings.hidden"]]
 
     # Sort
     if sort_by == "size" and "size" in df.columns:

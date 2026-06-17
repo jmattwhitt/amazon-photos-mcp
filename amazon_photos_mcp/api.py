@@ -5,7 +5,7 @@ import random
 import time
 from typing import Any, Dict, Generator, List
 
-import httpx
+from curl_cffi import requests as curl_req
 
 from amazon_photos_mcp.errors import AuthenticationError, RateLimitError
 
@@ -32,18 +32,15 @@ class AmazonPhotosClient:
 
         session_id = cookies.get("session-id", "")
 
-        # Configure httpx client with connection pooling and timeouts
-        self.client = httpx.Client(
-            http2=False,
-            follow_redirects=True,
-            timeout=httpx.Timeout(60.0),
-            headers={
-                "user-agent": random.choice(USER_AGENTS),
-                "x-amzn-sessionid": session_id,
-            },
-            cookies=cookies,
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0),
-        )
+        # Configure curl_cffi session with browser impersonation
+        self.client = curl_req.Session()
+        self.client.headers.update({
+            "user-agent": random.choice(USER_AGENTS),
+            "x-amzn-sessionid": session_id,
+        })
+        if cookies:
+            self.client.cookies.update(cookies)
+        self._cookies = cookies
         self._root_node = None
 
     def _determine_tld(self, cookies: dict[str, str]) -> str:
@@ -61,15 +58,16 @@ class AmazonPhotosClient:
             return "es"
         return "com"
 
-    def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+    def request(self, method: str, url: str, **kwargs: Any) -> Any:
         """Centralized request handler with error wrapping and retry."""
+        kwargs.setdefault("timeout", 30.0)
         max_retries = 3
         last_exception: Exception | None = None
 
         for attempt in range(max_retries):
             try:
                 resp = self.client.request(method, url, **kwargs)
-            except httpx.RequestError as e:
+            except curl_req.RequestsError as e:
                 last_exception = e
                 if attempt < max_retries - 1:
                     delay = 0.5 * (2**attempt) + random.uniform(0, 0.5)
@@ -350,16 +348,13 @@ class AmazonPhotosClient:
             with self.client.stream("GET", url, params=params) as resp:
                 resp.raise_for_status()
                 yielded = False
-                for chunk in resp.iter_bytes(chunk_size=8192):
+                for chunk in resp.iter_content(chunk_size=8192):
                     yielded = True
                     yield chunk
                 if not yielded:
                     logger.warning("download_stream for %s returned empty response body", node_id)
-        except httpx.HTTPStatusError as e:
-            logger.error("download_stream HTTP error for %s: %s", node_id, e)
-            raise
-        except httpx.RequestError as e:
-            logger.error("download_stream connection error for %s: %s", node_id, e)
+        except curl_req.RequestsError as e:
+            logger.error("download_stream error for %s: %s", node_id, e)
             raise
 
     def trashed(self) -> List[Dict[str, Any]]:
@@ -424,7 +419,7 @@ class AmazonPhotosClient:
                 if upload_url:
                     with open(str(file_path), "rb") as f:
                         data = f.read()
-                    upload_resp = self.client.put(upload_url, content=data)
+                    upload_resp = self.client.put(upload_url, data=data)
                     upload_resp.raise_for_status()
 
                 results.append({"name": file_path.name, "status": "ok"})
