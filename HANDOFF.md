@@ -18,6 +18,7 @@ Hostile code review of the clean-room rewrite (`api.py` + `client.py` decoupling
 | `88e8d16` | `duplicates.py:217` | `md5_groups_dup` dedented from 8 to 4 spaces (same pattern, same `NameError` crash) |
 | `88e8d16` | `media.py:377-418` | `download_library` restructured to group items by date within each batch before downloading |
 | `ab2c84a` | `config.py:14,50-58` | `TomlConfigSettingsSource` wired in via `settings_customise_sources` |
+
 ### Reported Bugs Investigated (All Refuted)
 
 1. **Missing `download()` method** -- REFUTED. `download()` EXISTS at `api.py:433-463` with matching signature.
