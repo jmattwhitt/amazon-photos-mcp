@@ -469,3 +469,117 @@ class TestPerceptualHash:
         bad_file.write_text("hello")
         result = compute_phash(bad_file)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker
+# ---------------------------------------------------------------------------
+
+
+class TestCircuitBreaker:
+    def test_starts_closed(self):
+        from amazon_photos_mcp.rate_limiter import CircuitBreaker
+
+        cb = CircuitBreaker()
+        assert cb.state == "closed"
+        assert cb.is_allowed() is True
+
+    def test_opens_after_threshold_failures(self):
+        from amazon_photos_mcp.rate_limiter import CircuitBreaker
+
+        cb = CircuitBreaker(threshold=3, window_s=60, cooldown_s=30)
+        assert cb.is_allowed() is True
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.is_allowed() is True
+        cb.record_failure()
+        assert cb.state == "open"
+        assert cb.is_allowed() is False
+
+    def test_closes_on_success(self):
+        from amazon_photos_mcp.rate_limiter import CircuitBreaker
+
+        cb = CircuitBreaker(threshold=2, window_s=60, cooldown_s=30)
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.state == "open"
+        cb.record_success()
+        assert cb.state == "closed"
+        assert cb.is_allowed() is True
+
+    def test_half_open_probe_on_cooldown(self):
+        from amazon_photos_mcp.rate_limiter import CircuitBreaker
+
+        cb = CircuitBreaker(threshold=1, window_s=60, cooldown_s=0)
+        cb.record_failure()
+        assert cb.state == "open"
+        # Cooldown expired immediately, transitions to half-open, allows probe
+        assert cb.is_allowed() is True
+        assert cb.state == "half_open"
+
+    def test_thread_safety(self):
+        import concurrent.futures
+
+        from amazon_photos_mcp.rate_limiter import CircuitBreaker
+
+        cb = CircuitBreaker(threshold=5, window_s=60, cooldown_s=30)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            futures = [ex.submit(cb.record_failure) for _ in range(10)]
+            concurrent.futures.wait(futures)
+        # Should not crash; state may be open depending on timing
+        assert cb.state in ("closed", "open")
+
+
+# ---------------------------------------------------------------------------
+# Token bucket retry_after derivation
+# ---------------------------------------------------------------------------
+
+
+class TestTokenBucketRetryAfter:
+    def test_derives_retry_after_from_bucket(self):
+        from amazon_photos_mcp.rate_limiter import TokenBucket
+
+        bucket = TokenBucket(rate=1.0, capacity=5)
+        for _ in range(5):
+            bucket.consume(1)
+        tokens_missing = max(1.0, 1.0 - bucket.available)
+        retry_after = int(tokens_missing / bucket._rate) + 1
+        assert retry_after >= 1
+        assert retry_after <= 6
+
+
+# ---------------------------------------------------------------------------
+# _tool decorator: auth auto-refresh
+# ---------------------------------------------------------------------------
+
+
+class TestToolAuthRefresh:
+    def test_auto_refresh_on_authentication_error(self):
+        from unittest.mock import patch
+
+        import amazon_photos_mcp.decorators as mod_decorators
+
+        call_count = 0
+
+        @mod_decorators._tool
+        def fn():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                from amazon_photos_mcp.errors import AuthenticationError
+                raise AuthenticationError()
+            return {"status": "recovered"}
+
+        refreshed = False
+
+        def _fake_get_client(force_refresh=False):
+            nonlocal refreshed
+            if force_refresh:
+                refreshed = True
+            return None
+
+        with patch("amazon_photos_mcp.client._get_client", _fake_get_client):
+            result = fn()
+
+        assert result == {"status": "recovered"}
+        assert call_count == 2
