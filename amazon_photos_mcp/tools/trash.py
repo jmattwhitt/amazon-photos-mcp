@@ -28,27 +28,35 @@ def list_trashed(within_days: int = 0) -> dict[str, Any]:
         within_days: If > 0, only show items trashed in the last N days (max 30).
                      Default 0 shows all trashed items.
     """
-    import pandas as pd
-
     ap = _get_client()
     data = ap.trashed()
 
     if not data:
         return _safe_df_to_result(None, max_results=200)
 
-    df = pd.DataFrame(data)
-
-    if within_days > 0 and "modifiedDate" in df.columns:
+    if within_days > 0:
         within_days = min(within_days, 30)
-        cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=within_days)
-        try:
-            df["modifiedDate"] = pd.to_datetime(df["modifiedDate"], utc=True, errors="coerce")
-            df = df[df["modifiedDate"] >= cutoff]
-            df = df.sort_values("modifiedDate", ascending=False)
-        except (TypeError, ValueError):
-            pass
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=within_days)
 
-    return _safe_df_to_result(df, max_results=200)
+        def _parse_md(item: dict) -> datetime | None:
+            md = item.get("modifiedDate")
+            if not md or not isinstance(md, str):
+                return None
+            try:
+                return datetime.fromisoformat(md.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                return None
+
+        filtered = []
+        for item in data:
+            d = _parse_md(item)
+            if d is not None and d >= cutoff:
+                filtered.append(item)
+        filtered.sort(key=lambda i: i.get("modifiedDate") or "", reverse=True)
+        data = filtered
+
+    return _safe_df_to_result(data, max_results=200)
 
 
 @mcp.tool(annotations=_tool_annotations("restore_items"))

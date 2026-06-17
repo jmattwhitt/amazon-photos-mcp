@@ -30,7 +30,8 @@ def get_library_stats() -> dict[str, Any]:
     duplicate count, storage usage, folder/album/people counts,
     and data quality indicators.
     """
-    import pandas as pd
+    from collections import Counter
+    from datetime import datetime
 
     ap = _get_client()
     stats: dict[str, Any] = {}
@@ -40,19 +41,20 @@ def get_library_stats() -> dict[str, Any]:
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
-    db = pd.json_normalize(items)
 
     # --- Content type breakdown ---
-    if "contentType" in db.columns:
-        type_counts = db["contentType"].value_counts().to_dict()
-        stats["content_types"] = {str(k): int(v) for k, v in type_counts.items()}
+    type_counts: Counter = Counter()
+    for item in items:
+        ct = item.get("contentType")
+        if ct:
+            type_counts[str(ct)] += 1
+        stats["content_types"] = dict(type_counts)
         stats["photo_count"] = sum(v for k, v in type_counts.items() if "image" in str(k).lower())
         stats["video_count"] = sum(v for k, v in type_counts.items() if "video" in str(k).lower())
 
     # --- Size stats ---
-    if "size" in db.columns:
-        sizes = db["size"].dropna()
-        if not sizes.empty:
+    sizes = [item.get("size") for item in items if item.get("size") is not None]
+    if sizes:
             stats["total_size_bytes"] = int(sizes.sum())
             stats["total_size_gb"] = round(sizes.sum() / (1024**3), 2)
             buckets = {"<1MB": 0, "1-5MB": 0, "5-10MB": 0, "10-50MB": 0, ">50MB": 0}
@@ -70,24 +72,37 @@ def get_library_stats() -> dict[str, Any]:
             stats["size_distribution"] = buckets
 
     # --- Date range ---
-    if "createdDate" in db.columns:
-        dates = pd.to_datetime(db["createdDate"], errors="coerce").dropna()
-        if not dates.empty:
-            stats["date_range"] = {
-                "oldest": str(dates.min().date()),
-                "newest": str(dates.max().date()),
-            }
-            # Files per year/month histogram
-            hist = dates.dt.to_period("M").value_counts().sort_index()
-            stats["files_per_month"] = {str(k): int(v) for k, v in hist.head(24).items()}
+    dates = []
+    for item in items:
+        cd = item.get("createdDate")
+        if cd and isinstance(cd, str):
+            try:
+                dt = datetime.fromisoformat(cd.replace("Z", "+00:00"))
+                dates.append(dt)
+            except (ValueError, TypeError):
+                pass
+    if dates:
+        stats["date_range"] = {
+            "oldest": str(min(dates).date()),
+            "newest": str(max(dates).date()),
+        }
+        monthly = Counter()
+        for d in dates:
+            monthly[f"{d.year}-{d.month:02d}"] += 1
+        sorted_months = sorted(monthly.items())
+        stats["files_per_month"] = {k: v for k, v in sorted_months[-24:]}
 
     # --- Duplicate count ---
-    if "md5" in db.columns:
-        md5_counts = db.groupby("md5").size()
-        dupe_md5s = md5_counts[md5_counts > 1]
-        stats["exact_duplicate_count"] = int(dupe_md5s.sum() - len(dupe_md5s))
+    md5_groups: dict[str, list] = {}
+    for item in items:
+        md5 = item.get("md5")
+        if md5:
+            md5_groups.setdefault(str(md5), []).append(item)
+    dupe_md5s = {md5 for md5, grp in md5_groups.items() if len(grp) > 1}
+    if dupe_md5s:
+        total_dupes = sum(len(md5_groups[md5]) for md5 in dupe_md5s)
+        stats["exact_duplicate_count"] = total_dupes - len(dupe_md5s)
         stats["duplicate_groups"] = len(dupe_md5s)
-
     # --- Folder / album / people counts ---
     try:
         folders = ap.get_folders()
@@ -109,10 +124,8 @@ def get_library_stats() -> dict[str, Any]:
 
     # --- Data quality ---
     quality: dict[str, int] = {}
-    if "createdDate" in db.columns:
-        quality["missing_dates"] = int(db["createdDate"].isna().sum())
-    if "location.latitude" in db.columns:
-        quality["missing_location"] = int(db["location.latitude"].isna().sum())
+    quality["missing_dates"] = sum(1 for item in items if not item.get("createdDate"))
+    quality["missing_location"] = sum(1 for item in items if item.get("location", {}).get("latitude") is None)
     stats["data_quality"] = quality
 
     # --- Storage usage vs quota ---
@@ -126,7 +139,7 @@ def get_library_stats() -> dict[str, Any]:
     except Exception:
         stats["storage_error"] = True
 
-    stats["total_items"] = len(db)
+    stats["total_items"] = len(items)
     return stats
 
 
@@ -162,16 +175,13 @@ def export_metadata(
         if not items:
             return {"status": "no_data", "message": "Library is empty."}
 
-    import pandas as pd
-
-    df = pd.json_normalize(items)
 
     if not output_path:
         ext = "csv" if fmt == "csv" else "json"
         output_path = str(Path.home() / "Downloads" / f"amazon-photos-export.{ext}")
 
     # Clean and optionally slim
-    records = [_clean_row(r) for r in df.to_dict(orient="records")]
+    records = [_clean_row(r) for r in items]
     if slim:
         records = [{k: v for k, v in r.items() if k in SLIM_FIELDS} for r in records]
     if not include_exif:
@@ -183,12 +193,15 @@ def export_metadata(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if fmt == "csv":
-        import pandas as pd
-
-        pd.DataFrame(records).to_csv(out, index=False)
+        import csv
+        with open(out, 'w', newline='', encoding='utf-8') as f:
+            if records:
+                writer = csv.DictWriter(f, fieldnames=list(records[0].keys()))
+                writer.writeheader()
+                writer.writerows(records)
     else:
         # JSON: organize by year/month for Immich compatibility
-        if "createdDate" in df.columns:
+        if any("createdDate" in r for r in records):
             by_date: dict[str, list[dict[str, Any]]] = {}
             for r in records:
                 created = r.get("createdDate", "unknown") or "unknown"
@@ -232,7 +245,8 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
     Args:
         min_photos_per_month: Months with fewer than this many photos are flagged as gaps.
     """
-    import pandas as pd
+    from collections import Counter
+    from datetime import datetime
 
     ap = _get_client()
 
@@ -240,29 +254,40 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
-    db = pd.json_normalize(items)
+    monthly_counts: Counter = Counter()
+    for item in items:
+        cd = item.get("createdDate")
+        if cd and isinstance(cd, str) and len(cd) >= 7:
+            monthly_counts[cd[:7]] += 1
 
-    if "createdDate" not in db.columns:
-        return {"status": "no_data", "message": "createdDate column not found in database."}
-
-    dates = pd.to_datetime(db["createdDate"], errors="coerce").dropna()
-    if dates.empty:
+    if not monthly_counts:
         return {"status": "no_data", "message": "No valid dates found in database."}
 
-    monthly = dates.dt.to_period("M").value_counts().sort_index()
+    months_sorted = sorted(monthly_counts.keys())
+    min_month = months_sorted[0]
+    max_month = months_sorted[-1]
 
-    # Find all months between oldest and newest
-    full_range = pd.period_range(monthly.index.min(), monthly.index.max(), freq="M")
-    full_counts = monthly.reindex(full_range, fill_value=0)
+    def _month_iter(start: str, end: str):
+        s = datetime.strptime(start + "-01", "%Y-%m-%d")
+        e = datetime.strptime(end + "-01", "%Y-%m-%d")
+        while s <= e:
+            yield s.strftime("%Y-%m")
+            if s.month == 12:
+                s = s.replace(year=s.year + 1, month=1)
+            else:
+                s = s.replace(month=s.month + 1)
+
+    full_range = list(_month_iter(min_month, max_month))
+    total_photos = sum(monthly_counts.values())
 
     gaps = [
         {
             "month": str(month),
-            "photo_count": int(full_counts[month]),
-            "gap_size": "empty" if full_counts[month] == 0 else "low",
+            "photo_count": monthly_counts.get(month, 0),
+            "gap_size": "empty" if monthly_counts.get(month, 0) == 0 else "low",
         }
         for month in full_range
-        if full_counts[month] < min_photos_per_month
+        if monthly_counts.get(month, 0) < min_photos_per_month
     ]
     gaps.sort(key=lambda g: g["photo_count"])
 
@@ -271,11 +296,11 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
 
     return {
         "date_range": {
-            "oldest": str(monthly.index.min()),
-            "newest": str(monthly.index.max()),
+            "oldest": min_month,
+            "newest": max_month,
         },
         "months_scanned": len(full_range),
-        "total_photos": int(dates.count()),
+        "total_photos": total_photos,
         "min_photos_threshold": min_photos_per_month,
         "total_gaps": len(gaps),
         "empty_months": len(gap_months),
