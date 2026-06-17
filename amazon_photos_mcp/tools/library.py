@@ -3,66 +3,21 @@
 from __future__ import annotations
 
 import json
-import os
-import time
 from pathlib import Path
 from typing import Any
 
-from amazon_photos_mcp import (
-    _AMAZON_COOKIE_PATH,
-    _get_client,
-    _tool,
-    _tool_annotations,
-    mcp,
-)
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
 
 
 @mcp.tool(annotations=_tool_annotations("check_db_integrity"))
 @_tool
 def check_db_integrity() -> dict[str, Any]:
     """Validate the local parquet metadata cache: schema, row count, and file age."""
-    import pandas as pd
-
-    EXPECTED_COLUMNS = {"id", "name", "md5", "size", "createdDate", "contentType"}
-
-    db_path = Path(
-        os.environ.get(
-            "AMAZON_PHOTOS_DB",
-            str(_AMAZON_COOKIE_PATH.parent / "ap.parquet"),
-        )
-    )
-
-    if not db_path.exists():
-        return {
-            "valid": False,
-            "message": f"Parquet DB not found at {db_path}. Call check_connection to initialize.",
-            "path": str(db_path),
-        }
-
-    age_hours = (time.time() - db_path.stat().st_mtime) / 3600
-
-    try:
-        df = pd.read_parquet(db_path)
-    except Exception as e:
-        return {
-            "valid": False,
-            "message": f"Parquet DB is unreadable: {e}",
-            "path": str(db_path),
-            "age_hours": round(age_hours, 1),
-        }
-
-    present = set(df.columns)
-    missing = EXPECTED_COLUMNS - present
-
     return {
-        "valid": len(missing) == 0,
-        "path": str(db_path),
-        "row_count": len(df),
-        "column_count": len(df.columns),
-        "expected_columns_present": list(EXPECTED_COLUMNS & present),
-        "missing_columns": list(missing),
-        "age_hours": round(age_hours, 1),
-        "message": "OK" if not missing else f"Missing expected columns: {missing}",
+        "valid": True,
+        "message": "Parquet caching is deprecated in the native API client. The server now queries live data directly.",
     }
 
 
@@ -78,31 +33,28 @@ def get_library_stats() -> dict[str, Any]:
     import pandas as pd
 
     ap = _get_client()
-    db = ap.db
     stats: dict[str, Any] = {}
 
-    if db is None or (hasattr(db, "empty") and db.empty):
-        return {"status": "no_data", "message": "Library database is empty. Run check_connection first."}
+    # Fetch live data
+    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    if not items:
+        return {"status": "no_data", "message": "Library is empty."}
+
+    db = pd.json_normalize(items)
 
     # --- Content type breakdown ---
     if "contentType" in db.columns:
         type_counts = db["contentType"].value_counts().to_dict()
-        stats["content_types"] = {
-            str(k): int(v) for k, v in type_counts.items()
-        }
-        stats["photo_count"] = sum(
-            v for k, v in type_counts.items() if "image" in str(k).lower()
-        )
-        stats["video_count"] = sum(
-            v for k, v in type_counts.items() if "video" in str(k).lower()
-        )
+        stats["content_types"] = {str(k): int(v) for k, v in type_counts.items()}
+        stats["photo_count"] = sum(v for k, v in type_counts.items() if "image" in str(k).lower())
+        stats["video_count"] = sum(v for k, v in type_counts.items() if "video" in str(k).lower())
 
     # --- Size stats ---
     if "size" in db.columns:
         sizes = db["size"].dropna()
         if not sizes.empty:
             stats["total_size_bytes"] = int(sizes.sum())
-            stats["total_size_gb"] = round(sizes.sum() / (1024 ** 3), 2)
+            stats["total_size_gb"] = round(sizes.sum() / (1024**3), 2)
             buckets = {"<1MB": 0, "1-5MB": 0, "5-10MB": 0, "10-50MB": 0, ">50MB": 0}
             for s in sizes:
                 if s < 1_048_576:
@@ -127,9 +79,7 @@ def get_library_stats() -> dict[str, Any]:
             }
             # Files per year/month histogram
             hist = dates.dt.to_period("M").value_counts().sort_index()
-            stats["files_per_month"] = {
-                str(k): int(v) for k, v in hist.head(24).items()
-            }
+            stats["files_per_month"] = {str(k): int(v) for k, v in hist.head(24).items()}
 
     # --- Duplicate count ---
     if "md5" in db.columns:
@@ -152,7 +102,7 @@ def get_library_stats() -> dict[str, Any]:
         stats["album_count"] = None
 
     try:
-        people = ap.aggregations("allPeople", out="")
+        people = ap.aggregations("allPeople")
         stats["people_count"] = len(people) if isinstance(people, list) else None
     except Exception:
         stats["people_count"] = None
@@ -168,11 +118,10 @@ def get_library_stats() -> dict[str, Any]:
     # --- Storage usage vs quota ---
     try:
         usage = ap.usage()
-        if hasattr(usage, "json"):
-            u = usage.json()
-            stats["storage_used_gb"] = round(u.get("used", 0) / (1024 ** 3), 2)
-            stats["storage_quota_gb"] = round(u.get("available", 0) / (1024 ** 3), 2)
-            used_pct = (u.get("used", 0) / max(u.get("available", 1), 1)) * 100
+        if isinstance(usage, dict):
+            stats["storage_used_gb"] = round(usage.get("used", 0) / (1024**3), 2)
+            stats["storage_quota_gb"] = round(usage.get("available", 0) / (1024**3), 2)
+            used_pct = (usage.get("used", 0) / max(usage.get("available", 1), 1)) * 100
             stats["storage_used_percent"] = round(used_pct, 1)
     except Exception:
         stats["storage_error"] = True
@@ -199,21 +148,23 @@ def export_metadata(
         slim: Only include essential fields
         filter_query: Optional Amazon Photos query to filter which items to export
     """
-    from amazon_photos_mcp import SLIM_FIELDS, _clean_row
+    from amazon_photos_mcp.utils import SLIM_FIELDS, _clean_row
 
     ap = _get_client()
-    db = ap.db
-
-    if db is None or (hasattr(db, "empty") and db.empty):
-        return {"status": "no_data", "message": "Database is empty. Run check_connection first."}
 
     # Apply filter if provided
     if filter_query:
-        df = ap.query(filter_query)
-        if df is None or (hasattr(df, "empty") and df.empty):
+        items = ap.query(filter_query)
+        if not items:
             return {"status": "no_results", "query": filter_query, "message": "Query returned no results."}
     else:
-        df = db.copy()
+        items = ap.query("type:(PHOTOS OR VIDEOS)")
+        if not items:
+            return {"status": "no_data", "message": "Library is empty."}
+
+    import pandas as pd
+
+    df = pd.json_normalize(items)
 
     if not output_path:
         ext = "csv" if fmt == "csv" else "json"
@@ -225,8 +176,7 @@ def export_metadata(
         records = [{k: v for k, v in r.items() if k in SLIM_FIELDS} for r in records]
     if not include_exif:
         records = [
-            {k: v for k, v in r.items() if not k.startswith(("image.", "camera", "exif", "gps"))}
-            for r in records
+            {k: v for k, v in r.items() if not k.startswith(("image.", "camera", "exif", "gps"))} for r in records
         ]
 
     out = Path(output_path)
@@ -234,6 +184,7 @@ def export_metadata(
 
     if fmt == "csv":
         import pandas as pd
+
         pd.DataFrame(records).to_csv(out, index=False)
     else:
         # JSON: organize by year/month for Immich compatibility
@@ -263,7 +214,7 @@ def export_metadata(
         "row_count": len(records),
         "format": fmt,
         "file_path": str(out),
-        "file_size_mb": round(file_size / (1024 ** 2), 2),
+        "file_size_mb": round(file_size / (1024**2), 2),
         "sample": records[:3] if records else [],
         "import_hint": (
             "For Immich: use the 'External Library' feature pointing at your exported files. "
@@ -284,10 +235,12 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
     import pandas as pd
 
     ap = _get_client()
-    db = ap.db
 
-    if db is None or (hasattr(db, "empty") and db.empty):
-        return {"status": "no_data", "message": "Database is empty. Run check_connection first."}
+    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    if not items:
+        return {"status": "no_data", "message": "Library is empty."}
+
+    db = pd.json_normalize(items)
 
     if "createdDate" not in db.columns:
         return {"status": "no_data", "message": "createdDate column not found in database."}

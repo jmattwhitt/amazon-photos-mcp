@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from amazon_photos_mcp import _get_client, _tool, _tool_annotations, mcp
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
 
 
 @mcp.tool(annotations=_tool_annotations("set_favorite"))
@@ -17,18 +19,10 @@ def set_favorite(node_ids: list[str], favorite: bool = True) -> dict[str, Any]:
         favorite: True to favorite, False to unfavorite
     """
     ap = _get_client()
-    if favorite:
-        result = ap.favorite(node_ids)
-        action = "favorited"
-    else:
-        result = ap.unfavorite(node_ids)
-        action = "unfavorited"
-    if hasattr(result, "json"):
-        data: dict[str, Any] = result.json()
-        data.setdefault("action", action)
-        data.setdefault("count", len(node_ids))
-        return data
-    return {"status": "ok", "action": action, "count": len(node_ids), "node_ids": node_ids}
+    result = ap.favorite(node_ids) if favorite else ap.unfavorite(node_ids)
+    if isinstance(result, (dict, list)):
+        return {"status": "success", "data": result}
+    return {"status": "success", "action": "favorited" if favorite else "unfavorited", "count": len(node_ids)}
 
 
 @mcp.tool(annotations=_tool_annotations("favorite_items"))

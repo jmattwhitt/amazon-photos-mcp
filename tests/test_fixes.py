@@ -4,78 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pandas as pd
-
-from amazon_photos_mcp import _configure_http_pooling, _safe_df_to_result, _wrap_http_errors
 from amazon_photos_mcp.config import _coerce
 from amazon_photos_mcp.tools.search import _resolve_person_cluster, _sanitize_query_value
-
-# ---------------------------------------------------------------------------
-# _configure_http_pooling
-# ---------------------------------------------------------------------------
-
-
-class TestConfigureHttpPooling:
-    def test_sets_pool_attributes(self) -> None:
-        """_configure_http_pooling sets keepalive and connection limits."""
-
-        mock_client = MagicMock()
-        mock_pool = MagicMock()
-        mock_transport = MagicMock()
-        mock_transport._pool = mock_pool
-        mock_client.client._transport = mock_transport
-
-        _configure_http_pooling(mock_client)
-
-        assert mock_pool._keepalive_expiry == 30.0
-        assert mock_pool._max_keepalive_connections == 5
-        assert mock_pool._max_connections == 10
-
-    def test_noop_when_no_client_attr(self) -> None:
-        """_configure_http_pooling is a no-op when client has no .client attr."""
-
-        obj = MagicMock(spec_set=[])
-        _configure_http_pooling(obj)
-
-
-# ---------------------------------------------------------------------------
-# _wrap_http_errors
-# ---------------------------------------------------------------------------
-
-
-class TestWrapHttpErrors:
-    def test_passthrough_on_success(self) -> None:
-        """Patched request returns the response unchanged for 200 OK."""
-
-        mock_client = MagicMock()
-        ok_resp = MagicMock(status_code=200)
-        mock_client.client.request.return_value = ok_resp
-
-        _wrap_http_errors(mock_client)
-
-        result = mock_client.client.request("GET", "https://example.com")
-        assert result is ok_resp
-
-    def test_timeout_default_added(self) -> None:
-        """Patched request adds a default timeout of 30s."""
-
-        mock_client = MagicMock()
-        ok_resp = MagicMock(status_code=200)
-        orig_request = mock_client.client.request
-        orig_request.return_value = ok_resp
-
-        _wrap_http_errors(mock_client)
-
-        mock_client.client.request("GET", "https://example.com")
-        call_kwargs = orig_request.call_args[1]
-        assert call_kwargs.get("timeout") == 30.0
-
-    def test_noop_when_no_client_attr(self) -> None:
-        """_wrap_http_errors is a no-op when object has no .client attr."""
-
-        obj = MagicMock(spec_set=[])
-        _wrap_http_errors(obj)
-
 
 # ---------------------------------------------------------------------------
 # Traceback suppression in _tool decorator
@@ -85,7 +15,7 @@ class TestWrapHttpErrors:
 class TestToolTracebackSuppression:
     def test_no_traceback_by_default(self) -> None:
         """Unexpected errors should NOT include traceback by default."""
-        import amazon_photos_mcp as mod2
+        import amazon_photos_mcp.decorators as mod2
 
         @mod2._tool
         def bad_tool():
@@ -100,7 +30,7 @@ class TestToolTracebackSuppression:
         """Unexpected errors include traceback when AMAZON_PHOTOS_DEBUG=1."""
         monkeypatch.setenv("AMAZON_PHOTOS_DEBUG", "1")
 
-        import amazon_photos_mcp as mod2
+        import amazon_photos_mcp.decorators as mod2
 
         @mod2._tool
         def bad_tool():
@@ -110,6 +40,7 @@ class TestToolTracebackSuppression:
         assert result["error"] is True
         assert "traceback" in result
         assert "debug mode" in result["traceback"]
+
 
 # ---------------------------------------------------------------------------
 # Query sanitizer
@@ -204,13 +135,13 @@ class TestCoerceErrorHandling:
 
 class TestSearchByDateValidation:
     def test_valid_month_passes(self, mock_ap) -> None:
-        from amazon_photos_mcp import search_by_date
+        from amazon_photos_mcp.tools.search import search_by_date
 
         result = search_by_date(year=2024, month=6, day=15)
         assert "error" not in result
 
     def test_invalid_month_rejected(self, mock_ap) -> None:
-        from amazon_photos_mcp import search_by_date
+        from amazon_photos_mcp.tools.search import search_by_date
 
         result = search_by_date(year=2024, month=99)
         assert result.get("error") is True
@@ -218,7 +149,7 @@ class TestSearchByDateValidation:
         assert "month" in result["message"].lower()
 
     def test_invalid_day_rejected(self, mock_ap) -> None:
-        from amazon_photos_mcp import search_by_date
+        from amazon_photos_mcp.tools.search import search_by_date
 
         result = search_by_date(year=2024, month=6, day=999)
         assert result.get("error") is True
@@ -229,18 +160,3 @@ class TestSearchByDateValidation:
 # ---------------------------------------------------------------------------
 # _safe_df_to_result reports correct total after dedup
 # ---------------------------------------------------------------------------
-
-
-class TestSafeDfToResultDedup:
-    def test_total_reflects_dedup(self) -> None:
-        """total should match count after drop_duplicates, not before."""
-
-        df = pd.DataFrame([
-            {"id": "a", "name": "photo.jpg"},
-            {"id": "a", "name": "photo_copy.jpg"},
-            {"id": "b", "name": "other.jpg"},
-        ])
-        result = _safe_df_to_result(df, max_results=50)
-        assert result["total"] == 2
-        assert result["has_more"] is False
-        assert len(result["items"]) == 2

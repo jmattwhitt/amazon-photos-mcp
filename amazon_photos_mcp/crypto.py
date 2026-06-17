@@ -21,7 +21,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 class DecryptionError(Exception):
     """Raised when the cookie file exists but cannot be decrypted."""
+
     pass
+
 
 _MACHINE_KEY_CACHE: bytes | None = None
 

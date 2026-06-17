@@ -3,25 +3,31 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Annotated, Any
 
-from amazon_photos_mcp import _get_client, _safe_df_to_result, _tool, _tool_annotations, mcp
+import pandas as pd
+from pydantic import Field
+
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
+from amazon_photos_mcp.utils import _safe_df_to_result
 
 
 def _sanitize_query_value(value: str) -> str:
     """Strip dangerous characters from Amazon Photos query values."""
     # Remove parentheses and double-quotes.
-    value = re.sub(r'[()"]', '', value)
+    value = re.sub(r'[()"]', "", value)
     # Remove logical operators with word-boundary anchors.
-    value = re.sub(r'\b(AND|OR|NOT)\b', '', value, flags=re.IGNORECASE)
+    value = re.sub(r"\b(AND|OR|NOT)\b", "", value, flags=re.IGNORECASE)
     # Collapse runs of whitespace left by removed tokens
-    value = re.sub(r'\s+', ' ', value)
+    value = re.sub(r"\s+", " ", value)
     return value.strip()
 
 
 def _resolve_person_cluster(ap: Any, person: str) -> str | None:
     """Resolve a person name to a cluster ID. Returns the cluster ID or None."""
-    people = ap.aggregations("allPeople", out="")
+    people = ap.aggregations("allPeople")
     for entry in people:
         cname = entry.get("searchData", {}).get("clusterName", "")
         if cname and cname.lower() == person.lower():
@@ -31,42 +37,52 @@ def _resolve_person_cluster(ap: Any, person: str) -> str | None:
 
 @mcp.tool(annotations=_tool_annotations("search_photos"))
 @_tool
-def search_photos(query: str, max_results: int = 25) -> dict[str, Any]:
+def search_photos(
+    query: Annotated[str, Field(description="The search string (e.g., 'sunset', 'beach')")],
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results to return")] = 25,
+) -> dict[str, Any]:
     """Search Amazon Photos by query string with optional filters (type, things, dates, etc.)."""
     ap = _get_client()
     query_clean = _sanitize_query_value(query)
     if not query_clean:
         return {"error": True, "code": "INVALID_ARGS", "message": "query parameter cannot be empty after sanitization."}
-    df = ap.query(query_clean)
+    items = ap.query(query_clean)
+    df = pd.json_normalize(items) if items else pd.DataFrame()
     return _safe_df_to_result(df, min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("get_photos"))
 @_tool
-def get_photos(max_results: int = 25) -> dict[str, Any]:
+def get_photos(
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of photos to return")] = 25,
+) -> dict[str, Any]:
     """Get recent photos from your Amazon Photos library."""
     ap = _get_client()
-    df = ap.photos()
+    items = ap.photos()
+    df = pd.json_normalize(items) if items else pd.DataFrame()
     return _safe_df_to_result(df, min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("get_videos"))
 @_tool
-def get_videos(max_results: int = 25) -> dict[str, Any]:
+def get_videos(
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of videos to return")] = 25,
+) -> dict[str, Any]:
     """Get recent videos from your Amazon Photos library."""
     ap = _get_client()
-    df = ap.videos()
+    items = ap.videos()
+    df = pd.json_normalize(items) if items else pd.DataFrame()
     return _safe_df_to_result(df, min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_date"))
 @_tool
 def search_by_date(
-    year: int,
-    month: int | None = None,
-    day: int | None = None,
-    media_type: str = "PHOTOS",
-    max_results: int = 25,
+    year: Annotated[int, Field(ge=1990, le=2100, description="The 4-digit year")],
+    month: Annotated[int | None, Field(ge=1, le=12, description="The month (1-12)")] = None,
+    day: Annotated[int | None, Field(ge=1, le=31, description="The day of the month (1-31)")] = None,
+    media_type: Annotated[str, Field(description="Media type filter ('PHOTOS' or 'VIDEOS')")] = "PHOTOS",
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results")] = 25,
 ) -> dict[str, Any]:
     """Search photos/videos by date range."""
     if month is not None and not (1 <= month <= 12):
@@ -80,31 +96,39 @@ def search_by_date(
         parts.append(f"timeMonth:({month})")
     if day:
         parts.append(f"timeDay:({day})")
-    df = ap.query(" ".join(parts))
+    items = ap.query(" ".join(parts))
+    df = pd.json_normalize(items) if items else pd.DataFrame()
     return _safe_df_to_result(df, min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_things"))
 @_tool
 def search_by_things(
-    things: str,
-    media_type: str = "PHOTOS",
-    max_results: int = 25,
+    things: Annotated[str, Field(description="Comma-separated labels (e.g. 'beach', 'dog')")],
+    media_type: Annotated[str, Field(description="Media type filter ('PHOTOS' or 'VIDEOS')")] = "PHOTOS",
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results")] = 25,
 ) -> dict[str, Any]:
     """Search photos by auto-detected labels (e.g. 'beach', 'dog AND park')."""
     ap = _get_client()
     media_type_clean = _sanitize_query_value(media_type)
     things_clean = _sanitize_query_value(things)
     if not things_clean:
-        return {"error": True, "code": "INVALID_ARGS",
-                "message": "things parameter cannot be empty after sanitization."}
-    df = ap.query(f"type:({media_type_clean}) things:({things_clean})")
+        return {
+            "error": True,
+            "code": "INVALID_ARGS",
+            "message": "things parameter cannot be empty after sanitization.",
+        }
+    items = ap.query(f"type:({media_type_clean}) things:({things_clean})")
+    df = pd.json_normalize(items) if items else pd.DataFrame()
     return _safe_df_to_result(df, min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_person"))
 @_tool
-def search_by_person(person: str, max_results: int = 50) -> dict[str, Any]:
+def search_by_person(
+    person: Annotated[str, Field(description="Name or cluster ID of the person to search for")],
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results")] = 50,
+) -> dict[str, Any]:
     """Search photos containing a specific person by name or cluster ID."""
     ap = _get_client()
     max_results = min(max_results, 200)
@@ -112,26 +136,27 @@ def search_by_person(person: str, max_results: int = 50) -> dict[str, Any]:
     cluster_id = _resolve_person_cluster(ap, person_clean)
     if cluster_id is None:
         cluster_id = person_clean
-    df = ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
+    items = ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
+    df = pd.json_normalize(items) if items else pd.DataFrame()
     return _safe_df_to_result(df, max_results)
 
 
 @mcp.tool(annotations=_tool_annotations("advanced_search"))
 @_tool
 def advanced_search(
-    content_type: str = "",
-    date_from: str = "",
-    date_to: str = "",
-    min_size: int = 0,
-    max_size: int = 0,
-    has_location: bool | None = None,
-    is_favorite: bool | None = None,
-    is_hidden: bool | None = None,
-    person: str = "",
-    things: str = "",
-    sort_by: str = "date",
-    sort_order: str = "desc",
-    max_results: int = 50,
+    content_type: Annotated[str, Field(description="E.g., 'image/jpeg', 'image/png', 'video/mp4'")] = "",
+    date_from: Annotated[str, Field(description="ISO date string (e.g. '2024-01-01')")] = "",
+    date_to: Annotated[str, Field(description="ISO date string (e.g. '2024-12-31')")] = "",
+    min_size: Annotated[int, Field(ge=0, description="Minimum file size in bytes")] = 0,
+    max_size: Annotated[int, Field(ge=0, description="Maximum file size in bytes")] = 0,
+    has_location: Annotated[bool | None, Field(description="Filter by presence of GPS location")] = None,
+    is_favorite: Annotated[bool | None, Field(description="Filter by favorite status")] = None,
+    is_hidden: Annotated[bool | None, Field(description="Filter by hidden status")] = None,
+    person: Annotated[str, Field(description="Name or cluster ID of the person")] = "",
+    things: Annotated[str, Field(description="Comma-separated labels (e.g., 'beach, dog')")] = "",
+    sort_by: Annotated[str, Field(description="Sort key ('date', 'size', or 'name')")] = "date",
+    sort_order: Annotated[str, Field(description="Sort direction ('asc' or 'desc')")] = "desc",
+    max_results: Annotated[int, Field(ge=1, le=200, description="Maximum results to return")] = 50,
 ) -> dict[str, Any]:
     """Search Amazon Photos with structured filter criteria.
 
@@ -188,9 +213,7 @@ def advanced_search(
 
     # Date range — Amazon Photos uses createdDate:[YYYYMMDD TO YYYYMMDD] syntax
     if date_from_clean and date_to_clean:
-        parts.append(
-            f"createdDate:[{date_from_clean} TO {date_to_clean}]"
-        )
+        parts.append(f"createdDate:[{date_from_clean} TO {date_to_clean}]")
     elif date_from_clean:
         parts.append(f"createdDate:[{date_from_clean} TO]")
     elif date_to_clean:
@@ -212,7 +235,8 @@ def advanced_search(
 
     # Build query and execute
     query_str = " ".join(p for p in parts if p)
-    df = ap.query(query_str)
+    items = ap.query(query_str)
+    df = pd.json_normalize(items) if items else pd.DataFrame()
 
     if df is None or (hasattr(df, "empty") and df.empty):
         return _safe_df_to_result(df, max_results)
@@ -270,8 +294,7 @@ def advanced_search(
         result["post_filters_applied"] = active_post_filters
         if result["total"] == 0 and result["items"] == []:
             result["note"] = (
-                "No results matched after post-filtering. "
-                "Try relaxing size, location, favorite, or hidden filters."
+                "No results matched after post-filtering. Try relaxing size, location, favorite, or hidden filters."
             )
     result["filters_applied"] = {
         "content_type": content_type,

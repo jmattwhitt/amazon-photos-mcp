@@ -31,9 +31,12 @@ dependencies = [
     "fastmcp>=2.0.0,<4",
     "imagehash>=4.3",
     "Pillow>=10.0",
-    # Upstream amazon_photos has no stable releases — pin a known-good commit.
-    # Remove allow-direct-references below before publishing to PyPI.
-    "amazon-photos @ git+https://github.com/trevorhobenshield/amazon_photos.git@685c965b5a4ba1ac85d418820ad200e12c18a46d",
+    "pandas>=2.0.0",
+    "orjson>=3.9.0",
+    "aiofiles>=23.0.0",
+    "psutil>=5.9.0",
+    "tqdm>=4.65.0",
+    # Removed upstream git dependency: amazon-photos code is now vendored.
     "httpx",
     "pyarrow",
 ]
@@ -61,10 +64,7 @@ Homepage = "https://github.com/jmattwhitt/amazon-photos-mcp"
 Repository = "https://github.com/jmattwhitt/amazon-photos-mcp.git"
 Issues = "https://github.com/jmattwhitt/amazon-photos-mcp/issues"
 
-# Required because amazon-photos is installed from a git commit.
-# Remove this section before publishing to PyPI.
-[tool.hatch.metadata]
-allow-direct-references = true
+
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -97,4 +97,5 @@ select = ["E", "F", "I", "W"]
 [dependency-groups]
 dev = [
     "pytest-anyio>=0.0.0",
+    "pytest-asyncio>=1.3.0",
 ]

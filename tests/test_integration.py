@@ -32,9 +32,7 @@ class TestMCPProtocol:
         for tool in tools:
             params = tool.parameters
             assert params is not None, f"{tool.name} has no parameters"
-            assert params.get("type") == "object", (
-                f"{tool.name} schema type should be object, got {params.get('type')}"
-            )
+            assert params.get("type") == "object", f"{tool.name} schema type should be object, got {params.get('type')}"
 
     async def test_tool_has_description(self) -> None:
         from amazon_photos_mcp import mcp
@@ -42,9 +40,7 @@ class TestMCPProtocol:
         tools = await mcp.list_tools()
         for tool in tools:
             assert tool.description, f"{tool.name} has no description"
-            assert len(tool.description) > 10, (
-                f"{tool.name} description too short: {tool.description}"
-            )
+            assert len(tool.description) > 10, f"{tool.name} description too short: {tool.description}"
 
     async def test_call_check_connection_returns_valid_json_rpc(self) -> None:
         from amazon_photos_mcp import mcp
@@ -66,7 +62,7 @@ class TestMCPProtocol:
         assert result is not None
 
     async def test_read_only_tools_annotated_correctly(self) -> None:
-        from amazon_photos_mcp import _READ_ONLY_TOOLS, mcp
+        from amazon_photos_mcp.server import _READ_ONLY_TOOLS, mcp
 
         tools = await mcp.list_tools()
         for tool in tools:
@@ -75,9 +71,7 @@ class TestMCPProtocol:
                 if ann is not None:
                     ro = getattr(ann, "readOnlyHint", None)
                     if ro is not None:
-                        assert ro is True, (
-                            f"{tool.name} should have readOnlyHint=True, got {ro}"
-                        )
+                        assert ro is True, f"{tool.name} should have readOnlyHint=True, got {ro}"
 
     async def test_tool_errors_return_headable_messages(self) -> None:
         from amazon_photos_mcp import mcp
@@ -88,14 +82,8 @@ class TestMCPProtocol:
         )
         assert result is not None
         if result.content:
-            text = (
-                result.content[0].text
-                if hasattr(result.content[0], "text")
-                else str(result.content[0])
-            )
-            assert "aborted" in text.lower() or "refusing" in text.lower(), (
-                f"Expected abort message, got: {text[:200]}"
-            )
+            text = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
+            assert "aborted" in text.lower() or "refusing" in text.lower(), f"Expected abort message, got: {text[:200]}"
 
 
 @pytest.mark.asyncio
@@ -122,9 +110,7 @@ class TestToolSchemaValidation:
         if sh:
             props = sh.parameters.get("properties", {})
             assert "hidden" in props, "set_hidden should have 'hidden' param"
-            assert "boolean" in props["hidden"].get("type", ""), (
-                f"'hidden' should be boolean, got {props['hidden']}"
-            )
+            assert "boolean" in props["hidden"].get("type", ""), f"'hidden' should be boolean, got {props['hidden']}"
 
     async def test_download_schema_has_flexible_params(self) -> None:
         from amazon_photos_mcp import mcp

@@ -8,33 +8,27 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from amazon_photos_mcp import (
-    PIPELINE_DEFAULT_DIR,
-    _get_client,
-    _safe_df_to_list,
-    _tool,
-    _tool_annotations,
-    mcp,
-)
+from pydantic import Field
+
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
 from amazon_photos_mcp.tools.search import _sanitize_query_value
+from amazon_photos_mcp.utils import PIPELINE_DEFAULT_DIR, _safe_df_to_list
 
 
 @mcp.tool(annotations=_tool_annotations("get_photo_url"))
 @_tool
-def get_photo_url(node_id: str) -> dict[str, Any]:
+def get_photo_url(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
     """Get the direct download URL for a photo/video by node ID."""
     ap = _get_client()
     result = ap.get_file(node_id)
     url = None
-    if hasattr(result, "json"):
-        data = result.json()
-        url = (
-            data.get("tempLink")
-            or data.get("contentUrl")
-            or data.get("url")
-        )
+    if isinstance(result, dict):
+        data = result
+        url = data.get("tempLink") or data.get("contentUrl") or data.get("url")
     return {
         "node_id": node_id,
         "url": url,
@@ -44,16 +38,16 @@ def get_photo_url(node_id: str) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("get_exif_data"))
 @_tool
-def get_exif_data(node_id: str) -> dict[str, Any]:
+def get_exif_data(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
     """Get EXIF metadata for a photo by node ID. Falls back to local parquet DB if API doesn't expose EXIF."""
-    from amazon_photos_mcp import _clean_row
+    from amazon_photos_mcp.utils import _clean_row
 
     ap = _get_client()
 
     try:
         result = ap.get_file(node_id)
-        if hasattr(result, "json"):
-            data = result.json()
+        if isinstance(result, dict):
+            data = result
             exif: dict[str, Any] = {}
             for section in ("image", "video", "exifData", "media"):
                 if section in data:
@@ -63,15 +57,24 @@ def get_exif_data(node_id: str) -> dict[str, Any]:
     except Exception:
         pass
 
-    db = ap.db
+    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    if not items:
+        return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
+    import pandas as pd
+
+    db = pd.json_normalize(items)
     if db is not None and "id" in db.columns:
         rows = db[db["id"] == node_id]
         if not rows.empty:
             row = _clean_row(rows.iloc[0].to_dict())
-            exif_keys = [k for k in row if any(
-                prefix in k.lower()
-                for prefix in ("image.", "camera", "exif", "gps", "iso", "exposure", "aperture", "focal")
-            )]
+            exif_keys = [
+                k
+                for k in row
+                if any(
+                    prefix in k.lower()
+                    for prefix in ("image.", "camera", "exif", "gps", "iso", "exposure", "aperture", "focal")
+                )
+            ]
             return {
                 "node_id": node_id,
                 "source": "local_db",
@@ -84,7 +87,10 @@ def get_exif_data(node_id: str) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("get_thumbnail"))
 @_tool
-def get_thumbnail(node_id: str, max_size: int = 0) -> dict[str, Any]:
+def get_thumbnail(
+    node_id: Annotated[str, Field(description="The Amazon Photos node ID")],
+    max_size: Annotated[int, Field(ge=0, description="Maximum dimension in pixels. 0 for default.")] = 0,
+) -> dict[str, Any]:
     """Get a base64-encoded thumbnail/preview of a photo for visual browsing.
 
     Downloads the full image from Amazon Photos, resizes it via PIL,
@@ -144,7 +150,7 @@ def get_thumbnail(node_id: str, max_size: int = 0) -> dict[str, Any]:
         from PIL import Image
 
         img = Image.open(stdlib_io.BytesIO(content))
-        img.thumbnail((max_size, max_size), Image.LANCZOS)
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 
         buf = stdlib_io.BytesIO()
         img.convert("RGB").save(buf, format="JPEG", quality=80)
@@ -195,7 +201,7 @@ def get_download_progress() -> dict[str, Any]:
     # Check for stale progress file (orphaned by a crashed download)
     age_s = time.time() - p.stat().st_mtime
     if age_s > 3600:  # 1 hour
-        return {"status": "stale", "message": f"Progress file is {age_s/3600:.1f}h old — download may have crashed."}
+        return {"status": "stale", "message": f"Progress file is {age_s / 3600:.1f}h old — download may have crashed."}
     try:
         data = json.loads(p.read_text())
         return {"status": "in_progress", **data}
@@ -206,14 +212,14 @@ def get_download_progress() -> dict[str, Any]:
 @mcp.tool(annotations=_tool_annotations("download"))
 @_tool
 def download(
-    node_ids: list[str] | None = None,
-    query: str = "",
-    year: int | None = None,
-    month: int | None = None,
-    day: int | None = None,
-    media_type: str = "PHOTOS",
-    output_dir: str = "",
-    max_items: int = 500,
+    node_ids: Annotated[list[str] | None, Field(description="List of node IDs to download")] = None,
+    query: Annotated[str, Field(description="Amazon Photos query string to download")] = "",
+    year: Annotated[int | None, Field(description="Download by year (4-digit)")] = None,
+    month: Annotated[int | None, Field(ge=1, le=12, description="Download by month (1-12)")] = None,
+    day: Annotated[int | None, Field(ge=1, le=31, description="Download by day (1-31)")] = None,
+    media_type: Annotated[str, Field(description="'PHOTOS' or 'VIDEOS'")] = "PHOTOS",
+    output_dir: Annotated[str, Field(description="Absolute path to save files")] = "",
+    max_items: Annotated[int, Field(ge=1, le=2000, description="Maximum items to download")] = 500,
 ) -> dict[str, Any]:
     """Download photos/videos from Amazon Photos.
 
@@ -292,12 +298,12 @@ def download(
 @mcp.tool(annotations=_tool_annotations("download_library"))
 @_tool
 def download_library(
-    output_dir: str = "",
-    media_type: str = "PHOTOS",
-    max_items: int = 5000,
-    organize_by: str = "year_month",
-    progress_file: str = "",
-    dry_run: bool = False,
+    output_dir: Annotated[str, Field(description="Root directory for downloads")] = "",
+    media_type: Annotated[str, Field(description="'PHOTOS' or 'VIDEOS'")] = "PHOTOS",
+    max_items: Annotated[int, Field(ge=1, le=10000, description="Max total items")] = 5000,
+    organize_by: Annotated[str, Field(description="'year_month' or 'flat'")] = "year_month",
+    progress_file: Annotated[str, Field(description="Path to write JSON progress")] = "",
+    dry_run: Annotated[bool, Field(description="Count items without downloading")] = False,
 ) -> dict[str, Any]:
     """Download your entire Amazon Photos library for backup or migration.
 
@@ -345,7 +351,7 @@ def download_library(
 
     if dry_run:
         # Estimate sizes
-        from amazon_photos_mcp import _is_nan
+        from amazon_photos_mcp.utils import _is_nan
 
         total_size = 0
         for item in items:
@@ -359,7 +365,7 @@ def download_library(
             "status": "dry_run",
             "total_items": len(node_ids),
             "estimated_size_bytes": total_size,
-            "estimated_size_gb": round(total_size / (1024 ** 3), 2) if total_size else "unknown",
+            "estimated_size_gb": round(total_size / (1024**3), 2) if total_size else "unknown",
             "output_dir": output_dir,
             "organize_by": organize_by,
             "message": f"Would download {len(node_ids)} {media_type.lower()} items. Set dry_run=False to execute.",
@@ -375,10 +381,10 @@ def download_library(
     num_batches = (total + batch_size - 1) // batch_size
 
     for batch_idx, i in enumerate(range(0, total, batch_size)):
-        batch = node_ids[i:i + batch_size]
+        batch = node_ids[i : i + batch_size]
 
         if organize_by == "year_month":
-            batch_items = items[i:i + batch_size]
+            batch_items = items[i : i + batch_size]
             for j, nid in enumerate(batch):
                 if j < len(batch_items):
                     created_raw = batch_items[j].get("createdDate", "")
@@ -404,24 +410,30 @@ def download_library(
         except Exception as e:
             failed.extend(batch)
             from amazon_photos_mcp.logging import log_error
+
             log_error("download_library batch %d/%d failed: %s", batch_idx + 1, num_batches, e)
 
         # Write progress file
         if progress_path:
             elapsed = time.monotonic() - start_time
-            progress_path.write_text(json.dumps({
-                "downloaded": downloaded,
-                "total": total,
-                "percent": round(downloaded / total * 100, 1) if total else 0,
-                "current_batch": batch_idx + 1,
-                "total_batches": num_batches,
-                "elapsed_seconds": round(elapsed, 1),
-                "eta_seconds": (
-                    round(elapsed / (max(downloaded, 1) / max(total, 1)) - elapsed, 1)
-                    if downloaded > 0 and total > 0 else None
-                ),
-                "failed_so_far": len(failed),
-            }))
+            progress_path.write_text(
+                json.dumps(
+                    {
+                        "downloaded": downloaded,
+                        "total": total,
+                        "percent": round(downloaded / total * 100, 1) if total else 0,
+                        "current_batch": batch_idx + 1,
+                        "total_batches": num_batches,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "eta_seconds": (
+                            round(elapsed / (max(downloaded, 1) / max(total, 1)) - elapsed, 1)
+                            if downloaded > 0 and total > 0
+                            else None
+                        ),
+                        "failed_so_far": len(failed),
+                    }
+                )
+            )
 
     elapsed = time.monotonic() - start_time
 
@@ -451,6 +463,7 @@ def download_library(
 
 # --- Deprecated wrappers ---
 
+
 @mcp.tool(annotations=_tool_annotations("download_files"))
 @_tool
 def download_files(node_ids: list[str], output_dir: str = "") -> dict[str, Any]:
@@ -469,8 +482,7 @@ def download_by_date(
     max_items: int = 500,
 ) -> dict[str, Any]:
     """DEPRECATED: Use download(year=..., month=..., day=...) instead."""
-    return download(year=year, month=month, day=day, output_dir=output_dir,
-                    media_type=media_type, max_items=max_items)
+    return download(year=year, month=month, day=day, output_dir=output_dir, media_type=media_type, max_items=max_items)
 
 
 @mcp.tool(annotations=_tool_annotations("download_for_pipeline"))

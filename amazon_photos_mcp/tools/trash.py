@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from amazon_photos_mcp import _get_client, _safe_df_to_result, _tool, _tool_annotations, mcp
+from amazon_photos_mcp.client import _get_client
+from amazon_photos_mcp.decorators import _tool
+from amazon_photos_mcp.server import _tool_annotations, mcp
+from amazon_photos_mcp.utils import _safe_df_to_result
 
 
 @mcp.tool(annotations=_tool_annotations("trash_items"))
@@ -12,13 +15,7 @@ from amazon_photos_mcp import _get_client, _safe_df_to_result, _tool, _tool_anno
 def trash_items(node_ids: list[str]) -> dict[str, Any]:
     """Move items to the trash (recoverable for 30 days)."""
     ap = _get_client()
-    result = ap.trash(node_ids)
-    if hasattr(result, "json"):
-        resp: dict[str, Any] = result.json()
-        resp.setdefault("action", "trashed")
-        resp.setdefault("count", len(node_ids))
-        resp.setdefault("node_ids", node_ids)
-        return resp
+    ap.trash(node_ids)
     return {"status": "ok", "action": "trashed", "count": len(node_ids), "node_ids": node_ids}
 
 
@@ -34,15 +31,15 @@ def list_trashed(within_days: int = 0) -> dict[str, Any]:
     import pandas as pd
 
     ap = _get_client()
-    df = ap.trashed()
+    data = ap.trashed()
 
-    if df is None or (hasattr(df, "empty") and df.empty):
-        return _safe_df_to_result(df, max_results=200)
+    if not data:
+        return _safe_df_to_result(None, max_results=200)
+
+    df = pd.DataFrame(data)
 
     if within_days > 0 and "modifiedDate" in df.columns:
         within_days = min(within_days, 30)
-        # Work on a copy to avoid mutating the cached ap.db DataFrame column type
-        df = df.copy()
         cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=within_days)
         try:
             df["modifiedDate"] = pd.to_datetime(df["modifiedDate"], utc=True, errors="coerce")
@@ -59,13 +56,7 @@ def list_trashed(within_days: int = 0) -> dict[str, Any]:
 def restore_items(node_ids: list[str]) -> dict[str, Any]:
     """Restore items from the trash back to the library."""
     ap = _get_client()
-    result = ap.restore(node_ids)
-    if hasattr(result, "json"):
-        resp: dict[str, Any] = result.json()
-        resp.setdefault("action", "restored")
-        resp.setdefault("count", len(node_ids))
-        resp.setdefault("node_ids", node_ids)
-        return resp
+    ap.restore(node_ids)
     return {"status": "ok", "action": "restored", "count": len(node_ids), "node_ids": node_ids}
 
 
@@ -83,8 +74,8 @@ def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, 
         }
     ap = _get_client()
     result = ap.delete(node_ids)
-    if hasattr(result, "json"):
-        return result.json()  # type: ignore[no-any-return]
+    if isinstance(result, dict):
+        return result
     return {"status": "ok", "action": "permanently_deleted", "count": len(node_ids), "node_ids": node_ids}
 
 
