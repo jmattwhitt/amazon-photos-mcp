@@ -63,5 +63,5 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
-        run: uv publish
+        run: uv publish --token ${{ secrets.PYPI_TOKEN }}
 
