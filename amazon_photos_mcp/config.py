@@ -36,12 +36,12 @@ def _load_config() -> dict[str, Any]:
         import tomllib
     except ImportError:
         try:
-            import tomli as tomllib  # type: ignore[no-redef]
+            import tomli as tomllib
         except ImportError:
             return {}
     try:
         with open(_CONFIG_PATH, "rb") as f:
-            return tomllib.load(f)
+            return tomllib.load(f)  # type: ignore[no-any-return]
     except Exception:
         return {}
 

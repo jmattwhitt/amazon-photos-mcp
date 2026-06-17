@@ -119,10 +119,10 @@ def load_encrypted_cookies(path: Path) -> dict[str, Any] | None:
         # Try encrypted first (has "AMCP" magic header)
         if raw[:4] == b"AMCP":
             decrypted = _decrypt(raw[4:])
-            return json.loads(decrypted)
+            return json.loads(decrypted)  # type: ignore[no-any-return]
         else:
             # Plaintext backward compatibility — reuse the bytes we already read
-            return json.loads(raw.decode("utf-8"))
+            return json.loads(raw.decode("utf-8"))  # type: ignore[no-any-return]
     except (json.JSONDecodeError, ValueError, OSError):
         return None
     except InvalidTag as e:

@@ -31,7 +31,7 @@ def _resolve_person_cluster(ap: Any, person: str) -> str | None:
     for entry in people:
         cname = entry.get("searchData", {}).get("clusterName", "")
         if cname and cname.lower() == person.lower():
-            return entry.get("value")
+            return entry.get("value")  # type: ignore[no-any-return]
     return None
 
 
