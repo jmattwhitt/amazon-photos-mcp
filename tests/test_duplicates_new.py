@@ -54,5 +54,5 @@ def test_trash_near_duplicates_quality_scoring(mock_get_client):
         {"id": "node2", "createdDate": "2024-01-01"},  # Oldest
     ]
     mock_ap.query.return_value = pd.DataFrame(items2)
-    res2 = trash_near_duplicates(group=["node1", "node2"], dry_run=True, keep_strategy="oldest")
+    trash_near_duplicates(group=["node1", "node2"], dry_run=True, keep_strategy="oldest")
     pass

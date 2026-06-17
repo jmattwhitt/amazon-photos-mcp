@@ -12,7 +12,7 @@ import amazon_photos_mcp.tools.people
 import amazon_photos_mcp.tools.search
 import amazon_photos_mcp.tools.storage
 import amazon_photos_mcp.tools.trash
-import amazon_photos_mcp.tools.upload
+import amazon_photos_mcp.tools.upload  # noqa: F401
 from amazon_photos_mcp.server import mcp
 
 
