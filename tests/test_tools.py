@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
 import amazon_photos_mcp.client as mod_client
 from amazon_photos_mcp.tools import (
     albums,
@@ -678,13 +676,12 @@ class TestGetExifData:
 
 
 class TestIsNan:
-    def test_pd_isna_raises_typeerror(self):
-        """When pd.isna() raises TypeError, _is_nan returns False."""
+    def test_nan_detection(self):
+        """_is_nan correctly detects None, NaN, and regular values."""
         from amazon_photos_mcp.utils import _is_nan
 
-        with patch("pandas.isna", side_effect=TypeError("bad type")):
-            result = _is_nan("some_value")
-            assert result is False
+        assert _is_nan(None) is True
+        assert _is_nan(float("nan")) is True
 
     def test_actual_nan_value(self):
         """pd.isna on actual NaN returns True."""
@@ -901,8 +898,8 @@ class TestPaginationMetadata:
 
         from amazon_photos_mcp.utils import _safe_df_to_result
 
-        df = pd.DataFrame([{"id": str(i), "name": f"photo{i}.jpg"} for i in range(10)])
-        result = _safe_df_to_result(df, max_results=5)
+        items = [{"id": str(i), "name": f"photo{i}.jpg"} for i in range(10)]
+        result = _safe_df_to_result(items, max_results=5)
         assert result["total"] == 10
         assert result["has_more"] is True
         assert len(result["items"]) == 5
@@ -911,8 +908,8 @@ class TestPaginationMetadata:
 
         from amazon_photos_mcp.utils import _safe_df_to_result
 
-        df = pd.DataFrame([{"id": "1", "name": "photo.jpg"}])
-        result = _safe_df_to_result(df, max_results=50)
+        items = [{"id": "1", "name": "photo.jpg"}]
+        result = _safe_df_to_result(items, max_results=50)
         assert result["total"] == 1
         assert result["has_more"] is False
         assert len(result["items"]) == 1
