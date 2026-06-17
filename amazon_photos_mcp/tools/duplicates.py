@@ -28,7 +28,7 @@ def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-        md5_groups: dict[str, list[dict[str, Any]]] = {}
+    md5_groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         md5 = item.get("md5")
         if md5:
@@ -214,7 +214,7 @@ def trash_duplicates(
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
-        md5_groups_dup: dict[str, list[dict[str, Any]]] = {}
+    md5_groups_dup: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         md5 = item.get("md5")
         if md5:
