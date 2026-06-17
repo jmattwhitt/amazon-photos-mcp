@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import TomlConfigSettingsSource
 
 
 class Settings(BaseSettings):
@@ -41,6 +42,17 @@ class Settings(BaseSettings):
         env_prefix="AMAZON_PHOTOS_",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        return (init_settings, env_settings, TomlConfigSettingsSource(settings_cls))
 
 
 settings = Settings()
