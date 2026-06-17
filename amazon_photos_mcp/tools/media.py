@@ -60,25 +60,21 @@ def get_exif_data(node_id: Annotated[str, Field(description="The Amazon Photos n
     items = ap.query("type:(PHOTOS OR VIDEOS)")
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
-    import pandas as pd
-
-    db = pd.json_normalize(items)
-    if db is not None and "id" in db.columns:
-        rows = db[db["id"] == node_id]
-        if not rows.empty:
-            row = _clean_row(rows.iloc[0].to_dict())
-            exif_keys = [
-                k
-                for k in row
-                if any(
-                    prefix in k.lower()
-                    for prefix in ("image.", "camera", "exif", "gps", "iso", "exposure", "aperture", "focal")
-                )
-            ]
+    for item in items:
+        if item.get("id") == node_id:
+            row = _clean_row(item)
+            exif = {}
+            for section in ("image", "video", "exifData", "media"):
+                if section in row and isinstance(row[section], dict):
+                    exif.update(row[section])
+            # Also grab direct keys matching exif patterns
+            for k in ("camera", "gps", "iso", "exposure", "aperture", "focal"):
+                if k in row and row[k] is not None:
+                    exif[k] = row[k]
             return {
                 "node_id": node_id,
                 "source": "local_db",
-                "exif": {k: row[k] for k in exif_keys if row.get(k) is not None},
+                "exif": exif,
                 "note": "Upstream library did not return EXIF via API; showing indexed fields from local cache.",
             }
 

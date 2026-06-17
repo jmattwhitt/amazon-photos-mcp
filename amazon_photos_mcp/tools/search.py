@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Annotated, Any
 
-import pandas as pd
 from pydantic import Field
 
 from amazon_photos_mcp.client import _get_client
@@ -59,8 +58,7 @@ def search_photos(
     if not query_clean:
         return {"error": True, "code": "INVALID_ARGS", "message": "query parameter cannot be empty after sanitization."}
     items = ap.query(query_clean)
-    df = pd.json_normalize(items) if items else pd.DataFrame()
-    return _safe_df_to_result(df, min(max_results, 200))
+    return _safe_df_to_result(items or [], min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("get_photos"))
@@ -71,8 +69,7 @@ def get_photos(
     """Get recent photos from your Amazon Photos library."""
     ap = _get_client()
     items = ap.photos()
-    df = pd.json_normalize(items) if items else pd.DataFrame()
-    return _safe_df_to_result(df, min(max_results, 200), slim=True)
+    return _safe_df_to_result(items or [], min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("get_videos"))
@@ -83,8 +80,7 @@ def get_videos(
     """Get recent videos from your Amazon Photos library."""
     ap = _get_client()
     items = ap.videos()
-    df = pd.json_normalize(items) if items else pd.DataFrame()
-    return _safe_df_to_result(df, min(max_results, 200), slim=True)
+    return _safe_df_to_result(items or [], min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_date"))
@@ -109,8 +105,7 @@ def search_by_date(
     if day:
         parts.append(f"timeDay:({day})")
     items = ap.query(" ".join(parts))
-    df = pd.json_normalize(items) if items else pd.DataFrame()
-    return _safe_df_to_result(df, min(max_results, 200))
+    return _safe_df_to_result(items or [], min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_things"))
@@ -131,8 +126,7 @@ def search_by_things(
             "message": "things parameter cannot be empty after sanitization.",
         }
     items = ap.query(f"type:({media_type_clean}) things:({things_clean})")
-    df = pd.json_normalize(items) if items else pd.DataFrame()
-    return _safe_df_to_result(df, min(max_results, 200))
+    return _safe_df_to_result(items or [], min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_person"))
@@ -149,8 +143,7 @@ def search_by_person(
     if cluster_id is None:
         cluster_id = person_clean
     items = ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
-    df = pd.json_normalize(items) if items else pd.DataFrame()
-    return _safe_df_to_result(df, max_results)
+    return _safe_df_to_result(items or [], max_results)
 
 
 @mcp.tool(annotations=_tool_annotations("advanced_search"))
@@ -238,45 +231,44 @@ def advanced_search(
     # Build query and execute
     query_str = " ".join(p for p in parts if p)
     items = ap.query(query_str)
-    df = pd.json_normalize(items) if items else pd.DataFrame()
 
-    if df is None or (hasattr(df, "empty") and df.empty):
-        return _safe_df_to_result(df, max_results)
+    if not items:
+        return _safe_df_to_result(items, max_results)
 
     # Post-filtering for criteria Amazon query syntax doesn't support
     # Size filter
-    if min_size > 0 and "size" in df.columns:
-        df = df[df["size"] >= min_size]
-    if max_size > 0 and "size" in df.columns:
-        df = df[df["size"] <= max_size]
+    if min_size > 0:
+        items = [i for i in items if (i.get("size") or 0) >= min_size]
+    if max_size > 0:
+        items = [i for i in items if (i.get("size") or 0) <= max_size]
 
     # Location filter
-    if has_location is True and "location.latitude" in df.columns:
-        df = df[df["location.latitude"].notna()]
-    elif has_location is False and "location.latitude" in df.columns:
-        df = df[df["location.latitude"].isna()]
+    if has_location is True:
+        items = [i for i in items if i.get("location", {}).get("latitude") is not None]
+    elif has_location is False:
+        items = [i for i in items if i.get("location", {}).get("latitude") is None]
 
     # Favorite filter
-    if is_favorite is True and "settings.favorite" in df.columns:
-        df = df[df["settings.favorite"]]
-    elif is_favorite is False and "settings.favorite" in df.columns:
-        df = df[~df["settings.favorite"]]
+    if is_favorite is True:
+        items = [i for i in items if i.get("settings", {}).get("favorite") is True]
+    elif is_favorite is False:
+        items = [i for i in items if i.get("settings", {}).get("favorite") is not True]
 
     # Hidden filter
-    if is_hidden is True and "settings.hidden" in df.columns:
-        df = df[df["settings.hidden"]]
-    elif is_hidden is False and "settings.hidden" in df.columns:
-        df = df[~df["settings.hidden"]]
+    if is_hidden is True:
+        items = [i for i in items if i.get("settings", {}).get("hidden") is True]
+    elif is_hidden is False:
+        items = [i for i in items if i.get("settings", {}).get("hidden") is not True]
 
     # Sort
-    if sort_by == "size" and "size" in df.columns:
-        df = df.sort_values("size", ascending=(sort_order == "asc"))
-    elif sort_by == "name" and "name" in df.columns:
-        df = df.sort_values("name", ascending=(sort_order == "asc"))
-    elif "createdDate" in df.columns:
-        df = df.sort_values("createdDate", ascending=(sort_order == "asc"))
+    if sort_by == "size":
+        items.sort(key=lambda i: i.get("size") or 0, reverse=(sort_order != "asc"))
+    elif sort_by == "name":
+        items.sort(key=lambda i: i.get("name") or "", reverse=(sort_order != "asc"))
+    else:
+        items.sort(key=lambda i: i.get("createdDate") or "", reverse=(sort_order != "asc"))
 
-    result = _safe_df_to_result(df, min(max_results, 200))
+    result = _safe_df_to_result(items, min(max_results, 200))
     result["query_used"] = query_str
     # Surface which post-filters were active (helps diagnose zero-result responses)
     active_post_filters = []
