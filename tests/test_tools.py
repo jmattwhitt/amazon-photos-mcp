@@ -81,7 +81,7 @@ class TestGetVideos:
 class TestSearchPhotos:
     def test_passes_query_to_ap(self, mock_ap):
         search.search_photos("things:(beach)")
-        mock_ap.query.assert_called_once_with("things:beach")
+        mock_ap.query.assert_called_once_with("things:(beach)")
 
     def test_returns_dict_with_items(self, mock_ap):
         assert isinstance(search.search_photos("test"), dict)
