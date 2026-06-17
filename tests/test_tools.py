@@ -788,7 +788,34 @@ class TestUploadFolder:
         assert mock_ap.upload.called
 
 
+
+
 # ---------------------------------------------------------------------------
+
+
+class TestFindDuplicates:
+    def test_non_empty_library_returns_groups(self, mock_ap):
+        """Regression: md5_groups was dead code inside `if not items: return`."""
+        result = duplicates.find_duplicates()
+        assert result["total_duplicate_files"] == 2
+        assert result["removable_copies"] == 1
+        assert result["total_groups"] == 1
+        aaaa_group = next(g for g in result["groups"] if g["md5"] == "aaaa")
+        assert aaaa_group["count"] == 2
+
+    def test_empty_library_returns_no_data(self, mock_ap):
+        mock_ap.query.return_value = []
+        result = duplicates.find_duplicates()
+        assert result.get("error") is True
+        assert result["code"] == "NO_DATA"
+
+    def test_no_duplicates_returns_zero(self, mock_ap):
+        mock_ap.query.return_value = [{"id": "a", "md5": "unique1"}, {"id": "b", "md5": "unique2"}]
+        result = duplicates.find_duplicates()
+        assert result["total_duplicate_files"] == 0
+        assert result["removable_copies"] == 0
+        assert result["groups"] == []
+
 # preview_duplicate_group
 # ---------------------------------------------------------------------------
 
@@ -953,3 +980,33 @@ class TestDownloadLibrary:
     def test_download_library_caps_at_10000(self) -> None:
         result = media.download_library(max_items=50000)
         assert result["status"] in ("ok", "no_data")
+    def test_download_library_groups_by_date_in_batch(self, mock_ap, tmp_path):
+        """Regression: items with different dates in a batch go to correct year/month subdirs."""
+        items = []
+        for i in range(10):
+            month = (i % 3) + 1  # months 1, 2, 3
+            items.append({
+                "id": f"node-d{i}",
+                "name": f"photo{i}.jpg",
+                "createdDate": f"2024-0{month:01d}-15T00:00:00Z",
+                "size": 100,
+                "contentType": "image/jpeg",
+            })
+        mock_ap.photos.return_value = items
+        mock_ap.download.return_value = None
+
+        out = tmp_path / "export"
+        result = media.download_library(
+            output_dir=str(out), max_items=100, organize_by="year_month", dry_run=False
+        )
+        assert result["downloaded"] == 10
+        # download() should be called once per unique year/month (3 calls for months 1,2,3)
+        assert mock_ap.download.call_count == 3
+        # Verify each call used a date-specific subdirectory
+        called_dirs = set()
+        for call in mock_ap.download.call_args_list:
+            called_dirs.add(str(call.kwargs.get("out", call.args[1] if len(call.args) > 1 else "")))
+        assert any("2024" in d and "01" in d for d in called_dirs)
+        assert any("2024" in d and "02" in d for d in called_dirs)
+        assert any("2024" in d and "03" in d for d in called_dirs)
+

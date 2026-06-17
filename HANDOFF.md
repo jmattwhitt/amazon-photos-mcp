@@ -68,18 +68,18 @@ amazon_photos_mcp/
 
 | Issue | Severity | Status |
 |-------|----------|--------|
-| connection.py:61 dead hasattr(result, "status_code") check | Minor | Fixed (`3470058`) -- removed; catches AuthenticationError explicitly |
-| validate_cookies fragile string matching | Minor | Fixed (`3470058`) -- explicit except AuthenticationError |
-| utils.py _safe_df_to_result duplicated guard clauses | Minor | Fixed (`0c1d1c8`) -- delegates DataFrame path to _safe_df_to_list |
-| No test coverage for find_duplicates non-empty path | Medium | Unfixed -- no regression test added |
-| No test coverage for download_library date org | Medium | Unfixed -- no regression test added |
-| rate_limiter hardcodes rate/capacity | Low | Pre-existing |
+| connection.py:61 dead hasattr(result, "status_code") check | Minor | Fixed (`3470058`) |
+| validate_cookies fragile string matching | Minor | Fixed (`3470058`) |
+| utils.py _safe_df_to_result duplicated guard clauses | Minor | Fixed (`0c1d1c8`) |
+| No test coverage for find_duplicates non-empty path | Medium | Fixed — 3 regression tests added |
+| No test coverage for download_library date org | Medium | Fixed — date-org regression test added |
+| rate_limiter hardcodes rate/capacity | Low | Resolved — configurable via TOML/env (`rate_limit`, `rate_capacity`) |
 
 ---
 
 ## Test Suite
 
-313 passed in ~2.1s, 0 warnings.
+317 passed in ~2.3s, 0 warnings.
 
 Run: `uv run pytest tests/`
 
