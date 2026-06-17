@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
 
 from amazon_photos_mcp.client import _get_client
 from amazon_photos_mcp.decorators import _tool
@@ -43,7 +43,7 @@ def get_library_stats() -> dict[str, Any]:
 
 
     # --- Content type breakdown ---
-    type_counts: Counter = Counter()
+    type_counts: Counter[str] = Counter()
     for item in items:
         ct = item.get("contentType")
         if ct:
@@ -53,10 +53,15 @@ def get_library_stats() -> dict[str, Any]:
         stats["video_count"] = sum(v for k, v in type_counts.items() if "video" in str(k).lower())
 
     # --- Size stats ---
-    sizes = [item.get("size") for item in items if item.get("size") is not None]
+    _raw_sizes: list[int] = []
+    for _item in items:
+        _s = _item.get("size")
+        if isinstance(_s, (int, float)):
+            _raw_sizes.append(int(_s))
+    sizes = _raw_sizes
     if sizes:
-            stats["total_size_bytes"] = int(sizes.sum())
-            stats["total_size_gb"] = round(sizes.sum() / (1024**3), 2)
+            stats["total_size_bytes"] = int(sum(sizes))
+            stats["total_size_gb"] = round(sum(sizes) / (1024**3), 2)
             buckets = {"<1MB": 0, "1-5MB": 0, "5-10MB": 0, "10-50MB": 0, ">50MB": 0}
             for s in sizes:
                 if s < 1_048_576:
@@ -86,14 +91,14 @@ def get_library_stats() -> dict[str, Any]:
             "oldest": str(min(dates).date()),
             "newest": str(max(dates).date()),
         }
-        monthly = Counter()
+        monthly: Counter[str] = Counter()
         for d in dates:
             monthly[f"{d.year}-{d.month:02d}"] += 1
         sorted_months = sorted(monthly.items())
         stats["files_per_month"] = {k: v for k, v in sorted_months[-24:]}
 
     # --- Duplicate count ---
-    md5_groups: dict[str, list] = {}
+    md5_groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         md5 = item.get("md5")
         if md5:
@@ -254,7 +259,7 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
-    monthly_counts: Counter = Counter()
+    monthly_counts: Counter[str] = Counter()
     for item in items:
         cd = item.get("createdDate")
         if cd and isinstance(cd, str) and len(cd) >= 7:
@@ -267,7 +272,7 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
     min_month = months_sorted[0]
     max_month = months_sorted[-1]
 
-    def _month_iter(start: str, end: str):
+    def _month_iter(start: str, end: str) -> Generator[str, None, None]:
         s = datetime.strptime(start + "-01", "%Y-%m-%d")
         e = datetime.strptime(end + "-01", "%Y-%m-%d")
         while s <= e:
