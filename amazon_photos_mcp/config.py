@@ -55,7 +55,7 @@ class Settings(BaseSettings):
         return (init_settings, env_settings, TomlConfigSettingsSource(settings_cls))
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[no-untyped-def]
 
 
 def get_config(key: str) -> Any:
@@ -66,7 +66,7 @@ def get_config(key: str) -> Any:
 def invalidate_cache() -> None:
     """Re-read config from TOML file by re-initializing settings."""
     global settings
-    settings = Settings()
+    settings = Settings()  # type: ignore[no-untyped-def]
 
 
 def list_all() -> dict[str, Any]:
