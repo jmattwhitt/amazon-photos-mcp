@@ -45,6 +45,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
 
     steps:
@@ -62,5 +63,5 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
-        run: uv publish --token ${{ secrets.PYPI_TOKEN }}
+        run: uv publish
 
