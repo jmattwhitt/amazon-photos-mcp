@@ -46,16 +46,16 @@ class Settings(BaseSettings):
     @classmethod
     def settings_customise_sources(
         cls,
-        settings_cls,
-        init_settings,
-        env_settings,
-        dotenv_settings,
-        file_secret_settings,
-    ):
+        settings_cls: type[BaseSettings],
+        init_settings: Any,
+        env_settings: Any,
+        dotenv_settings: Any,
+        file_secret_settings: Any,
+    ) -> tuple[Any, ...]:
         return (init_settings, env_settings, TomlConfigSettingsSource(settings_cls))
 
 
-settings = Settings()  # type: ignore[no-untyped-def]
+settings: Any = Settings()
 
 
 def get_config(key: str) -> Any:
@@ -66,12 +66,12 @@ def get_config(key: str) -> Any:
 def invalidate_cache() -> None:
     """Re-read config from TOML file by re-initializing settings."""
     global settings
-    settings = Settings()  # type: ignore[no-untyped-def]
+    settings = Settings()
 
 
 def list_all() -> dict[str, Any]:
     """Return all resolved config values for display/debugging."""
-    return settings.model_dump()
+    return settings.model_dump()  # type: ignore[no-any-return]
 
 
 def _coerce(value: str, default: Any) -> Any:

@@ -35,7 +35,7 @@ class AmazonPhotosClient:
         session_id = cookies.get("session-id", "")
 
         # Configure curl_cffi session with browser impersonation
-        self.client: curl_req.Session = curl_req.Session()
+        self.client = curl_req.Session()
         self.client.headers.update({
             "user-agent": random.choice(USER_AGENTS),
             "x-amzn-sessionid": session_id,
@@ -60,7 +60,7 @@ class AmazonPhotosClient:
             return "es"
         return "com"
 
-    def request(self, method: str, url: str, **kwargs: Any) -> Any:  # type: ignore[arg-type]
+    def request(self, method: str, url: str, **kwargs: Any) -> Any:
         """Centralized request handler with error wrapping and retry."""
         kwargs.setdefault("timeout", 30.0)
         max_retries = 3
