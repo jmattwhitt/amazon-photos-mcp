@@ -65,22 +65,23 @@ def _safe_df_to_list(df: Any, max_results: int = 50, slim: bool = False) -> list
 
 
 def _safe_df_to_result(df: Any, max_results: int = 50, slim: bool = False) -> dict[str, Any]:
-    """Like _safe_df_to_list but returns dict with truncation metadata."""
+    """Like _safe_df_to_list but returns dict with truncation metadata.
+
+    Delegates the DataFrame path to _safe_df_to_list so guard clauses
+    (None, list, empty, columns, to_dict) live in one place. Total is
+    computed against the deduped frame before delegation so has_more is
+    accurate.
+    """
     if df is None:
         return {"items": [], "has_more": False, "total": 0}
     if isinstance(df, list):
         total = len(df)
         items = df[:max_results]
         return {"items": items, "has_more": total > max_results, "total": total}
-    if hasattr(df, "empty") and df.empty:
-        return {"items": [], "has_more": False, "total": 0}
+    # Compute deduped total matching what _safe_df_to_list will do internally.
     if hasattr(df, "columns") and "id" in df.columns:
-        df = df.drop_duplicates(subset=["id"])
-    total = len(df)
-    if not hasattr(df, "to_dict"):
-        return {"items": [{"value": str(df)}], "has_more": False, "total": 1}
-    items = df.head(max_results).to_dict(orient="records")
-    items = [_clean_row(r) for r in items]
-    if slim:
-        items = [{k: v for k, v in r.items() if k in SLIM_FIELDS} for r in items]
+        total = len(df.drop_duplicates(subset=["id"]))
+    else:
+        total = len(df)
+    items = _safe_df_to_list(df, max_results=max_results, slim=slim)
     return {"items": items, "has_more": total > max_results, "total": total}
