@@ -27,8 +27,8 @@ graph TD
         library[library.py]
     end
 
-    Tools --> Client[AmazonPhotos Client<br/>amazon-photos library]
-    Client -->|httpx| API[Amazon Photos API]
+    Tools --> Client[AmazonPhotosClient<br/>curl_cffi + retry + rate limiter]
+    Client -->|curl_cffi| API[Amazon Photos API]
     Client --> DB[(Parquet DB<br/>local cache)]
 ```
 
@@ -285,8 +285,3 @@ uv run mypy amazon_photos_mcp/
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Acknowledgements
-
-The original architecture was inspired by the [amazon-photos](https://github.com/trevorhobenshield/amazon_photos) library by Trevor Hobenshield. As of v0.3, the upstream dependency has been replaced by a clean-room `curl_cffi` client.
-
