@@ -3,7 +3,7 @@
 ## Environment
 
 - **Python:** 3.10+ (3.12 in dev). Always use the project venv: `uv run <command>`.
-- **Test runner:** `uv run pytest` (223 tests, ~3s)
+- **Test runner:** `uv run pytest` (431 tests, ~4s)
 - **Linter:** `uv run ruff check .` (line length 120)
 - **Type checker:** `uv run mypy amazon_photos_mcp/` (strict mode)
 - **Formatting:** ruff for isort + basic lint; no black configured yet.
