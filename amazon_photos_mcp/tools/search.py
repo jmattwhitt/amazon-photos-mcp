@@ -24,9 +24,9 @@ def _sanitize_query_value(value: str) -> str:
     return value.strip()
 
 
-def _resolve_person_cluster(ap: Any, person: str) -> str | None:
+async def _resolve_person_cluster(ap: Any, person: str) -> str | None:
     """Resolve a person name to a cluster ID. Returns the cluster ID or None."""
-    people = ap.aggregations("allPeople")
+    people = await ap.aggregations("allPeople")
     for entry in people:
         cname = entry.get("searchData", {}).get("clusterName", "")
         if cname and cname.lower() == person.lower():
@@ -48,7 +48,7 @@ def _validate_date(d: str) -> str | None:
 
 @mcp.tool(annotations=_tool_annotations("search_photos"))
 @_tool
-def search_photos(
+async def search_photos(
     query: Annotated[str, Field(description="The search string (e.g., 'sunset', 'beach')")],
     max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results to return")] = 25,
 ) -> dict[str, Any]:
@@ -57,35 +57,35 @@ def search_photos(
     query_clean = query.strip()
     if not query_clean:
         return {"error": True, "code": "INVALID_ARGS", "message": "query parameter cannot be empty after sanitization."}
-    items = ap.query(query_clean)
+    items = await ap.query(query_clean)
     return _safe_df_to_result(items or [], min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("get_photos"))
 @_tool
-def get_photos(
+async def get_photos(
     max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of photos to return")] = 25,
 ) -> dict[str, Any]:
     """Get recent photos from your Amazon Photos library."""
     ap = _get_client()
-    items = ap.photos()
+    items = await ap.photos()
     return _safe_df_to_result(items or [], min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("get_videos"))
 @_tool
-def get_videos(
+async def get_videos(
     max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of videos to return")] = 25,
 ) -> dict[str, Any]:
     """Get recent videos from your Amazon Photos library."""
     ap = _get_client()
-    items = ap.videos()
+    items = await ap.videos()
     return _safe_df_to_result(items or [], min(max_results, 200), slim=True)
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_date"))
 @_tool
-def search_by_date(
+async def search_by_date(
     year: Annotated[int, Field(ge=1990, le=2100, description="The 4-digit year")],
     month: Annotated[int | None, Field(ge=1, le=12, description="The month (1-12)")] = None,
     day: Annotated[int | None, Field(ge=1, le=31, description="The day of the month (1-31)")] = None,
@@ -104,13 +104,13 @@ def search_by_date(
         parts.append(f"timeMonth:({month})")
     if day:
         parts.append(f"timeDay:({day})")
-    items = ap.query(" ".join(parts))
+    items = await ap.query(" ".join(parts))
     return _safe_df_to_result(items or [], min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_things"))
 @_tool
-def search_by_things(
+async def search_by_things(
     things: Annotated[str, Field(description="Comma-separated labels (e.g. 'beach', 'dog')")],
     media_type: Annotated[str, Field(description="Media type filter ('PHOTOS' or 'VIDEOS')")] = "PHOTOS",
     max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results")] = 25,
@@ -125,13 +125,13 @@ def search_by_things(
             "code": "INVALID_ARGS",
             "message": "things parameter cannot be empty after sanitization.",
         }
-    items = ap.query(f"type:({media_type_clean}) things:({things_clean})")
+    items = await ap.query(f"type:({media_type_clean}) things:({things_clean})")
     return _safe_df_to_result(items or [], min(max_results, 200))
 
 
 @mcp.tool(annotations=_tool_annotations("search_by_person"))
 @_tool
-def search_by_person(
+async def search_by_person(
     person: Annotated[str, Field(description="Name or cluster ID of the person to search for")],
     max_results: Annotated[int, Field(ge=1, le=200, description="Maximum number of results")] = 50,
 ) -> dict[str, Any]:
@@ -139,16 +139,16 @@ def search_by_person(
     ap = _get_client()
     max_results = min(max_results, 200)
     person_clean = _sanitize_query_value(person)
-    cluster_id = _resolve_person_cluster(ap, person_clean)
+    cluster_id = await _resolve_person_cluster(ap, person_clean)
     if cluster_id is None:
         cluster_id = person_clean
-    items = ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
+    items = await ap.query(f"type:(PHOTOS) clusterId:({cluster_id})")
     return _safe_df_to_result(items or [], max_results)
 
 
 @mcp.tool(annotations=_tool_annotations("advanced_search"))
 @_tool
-def advanced_search(
+async def advanced_search(
     content_type: Annotated[str, Field(description="E.g., 'image/jpeg', 'image/png', 'video/mp4'")] = "",
     date_from: Annotated[str, Field(description="ISO date string (e.g. '2024-01-01')")] = "",
     date_to: Annotated[str, Field(description="ISO date string (e.g. '2024-12-31')")] = "",
@@ -223,14 +223,14 @@ def advanced_search(
     # Person
     if person:
         person_clean = _sanitize_query_value(person)
-        cluster_id = _resolve_person_cluster(ap, person_clean)
+        cluster_id = await _resolve_person_cluster(ap, person_clean)
         if cluster_id is None:
             cluster_id = person_clean
         parts.append(f"clusterId:({cluster_id})")
 
     # Build query and execute
     query_str = " ".join(p for p in parts if p)
-    items = ap.query(query_str)
+    items = await ap.query(query_str)
 
     if not items:
         return _safe_df_to_result(items, max_results)

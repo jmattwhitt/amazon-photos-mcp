@@ -12,16 +12,16 @@ from amazon_photos_mcp.utils import _safe_df_to_result
 
 @mcp.tool(annotations=_tool_annotations("trash_items"))
 @_tool
-def trash_items(node_ids: list[str]) -> dict[str, Any]:
+async def trash_items(node_ids: list[str]) -> dict[str, Any]:
     """Move items to the trash (recoverable for 30 days)."""
     ap = _get_client()
-    ap.trash(node_ids)
+    await ap.trash(node_ids)
     return {"status": "ok", "action": "trashed", "count": len(node_ids), "node_ids": node_ids}
 
 
 @mcp.tool(annotations=_tool_annotations("list_trashed"))
 @_tool
-def list_trashed(within_days: int = 0) -> dict[str, Any]:
+async def list_trashed(within_days: int = 0) -> dict[str, Any]:
     """List items in the Amazon Photos trash.
 
     Args:
@@ -29,7 +29,7 @@ def list_trashed(within_days: int = 0) -> dict[str, Any]:
                      Default 0 shows all trashed items.
     """
     ap = _get_client()
-    data = ap.trashed()
+    data = await ap.trashed()
 
     if not data:
         return _safe_df_to_result(None, max_results=200)
@@ -61,16 +61,16 @@ def list_trashed(within_days: int = 0) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("restore_items"))
 @_tool
-def restore_items(node_ids: list[str]) -> dict[str, Any]:
+async def restore_items(node_ids: list[str]) -> dict[str, Any]:
     """Restore items from the trash back to the library."""
     ap = _get_client()
-    ap.restore(node_ids)
+    await ap.restore(node_ids)
     return {"status": "ok", "action": "restored", "count": len(node_ids), "node_ids": node_ids}
 
 
 @mcp.tool(annotations=_tool_annotations("permanently_delete"))
 @_tool
-def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, Any]:
+async def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, Any]:
     """Permanently delete items (bypasses trash — irreversible). Requires confirm=True."""
     if not confirm:
         return {
@@ -81,7 +81,7 @@ def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, 
             ),
         }
     ap = _get_client()
-    result = ap.delete(node_ids)
+    result = await ap.delete(node_ids)
     if isinstance(result, dict):
         return result
     return {"status": "ok", "action": "permanently_deleted", "count": len(node_ids), "node_ids": node_ids}
@@ -90,6 +90,6 @@ def permanently_delete(node_ids: list[str], confirm: bool = False) -> dict[str, 
 # Deprecated — use list_trashed(within_days=N)
 @mcp.tool(annotations=_tool_annotations("list_recently_deleted"))
 @_tool
-def list_recently_deleted(within_days: int = 7) -> dict[str, Any]:
+async def list_recently_deleted(within_days: int = 7) -> dict[str, Any]:
     """DEPRECATED: Use list_trashed(within_days=N) instead."""
-    return list_trashed(within_days=within_days)
+    return await list_trashed(within_days=within_days)

@@ -11,7 +11,7 @@ from amazon_photos_mcp.server import _tool_annotations, mcp
 
 @mcp.tool(annotations=_tool_annotations("set_favorite"))
 @_tool
-def set_favorite(node_ids: list[str], favorite: bool = True) -> dict[str, Any]:
+async def set_favorite(node_ids: list[str], favorite: bool = True) -> dict[str, Any]:
     """Mark photos/videos as favorites or remove them from favorites.
 
     Args:
@@ -19,7 +19,7 @@ def set_favorite(node_ids: list[str], favorite: bool = True) -> dict[str, Any]:
         favorite: True to favorite, False to unfavorite
     """
     ap = _get_client()
-    result = ap.favorite(node_ids) if favorite else ap.unfavorite(node_ids)
+    result = await ap.favorite(node_ids) if favorite else await ap.unfavorite(node_ids)
     if isinstance(result, (dict, list)):
         return {"status": "success", "data": result}
     return {"status": "success", "action": "favorited" if favorite else "unfavorited", "count": len(node_ids)}
@@ -27,21 +27,21 @@ def set_favorite(node_ids: list[str], favorite: bool = True) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("favorite_items"))
 @_tool
-def favorite_items(node_ids: list[str]) -> dict[str, Any]:
+async def favorite_items(node_ids: list[str]) -> dict[str, Any]:
     """DEPRECATED: Use set_favorite(node_ids, favorite=True) instead."""
-    return set_favorite(node_ids, favorite=True)
+    return await set_favorite(node_ids, favorite=True)
 
 
 @mcp.tool(annotations=_tool_annotations("unfavorite_items"))
 @_tool
-def unfavorite_items(node_ids: list[str]) -> dict[str, Any]:
+async def unfavorite_items(node_ids: list[str]) -> dict[str, Any]:
     """DEPRECATED: Use set_favorite(node_ids, favorite=False) instead."""
-    return set_favorite(node_ids, favorite=False)
+    return await set_favorite(node_ids, favorite=False)
 
 
 @mcp.tool(annotations=_tool_annotations("set_hidden"))
 @_tool
-def set_hidden(node_ids: list[str], hidden: bool = True) -> dict[str, Any]:
+async def set_hidden(node_ids: list[str], hidden: bool = True) -> dict[str, Any]:
     """Hide or unhide photos/videos in the main library view.
 
     Args:
@@ -50,10 +50,10 @@ def set_hidden(node_ids: list[str], hidden: bool = True) -> dict[str, Any]:
     """
     ap = _get_client()
     if hidden:
-        result = ap.hide(node_ids)
+        result = await ap.hide(node_ids)
         action = "hidden"
     else:
-        result = ap.unhide(node_ids)
+        result = await ap.unhide(node_ids)
         action = "unhidden"
     if isinstance(result, (dict, list)):
         return {"status": "success", "data": result, "action": action, "count": len(node_ids)}
@@ -62,13 +62,13 @@ def set_hidden(node_ids: list[str], hidden: bool = True) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("hide_items"))
 @_tool
-def hide_items(node_ids: list[str]) -> dict[str, Any]:
+async def hide_items(node_ids: list[str]) -> dict[str, Any]:
     """DEPRECATED: Use set_hidden(node_ids, hidden=True) instead."""
-    return set_hidden(node_ids, hidden=True)
+    return await set_hidden(node_ids, hidden=True)
 
 
 @mcp.tool(annotations=_tool_annotations("unhide_items"))
 @_tool
-def unhide_items(node_ids: list[str]) -> dict[str, Any]:
+async def unhide_items(node_ids: list[str]) -> dict[str, Any]:
     """DEPRECATED: Use set_hidden(node_ids, hidden=False) instead."""
-    return set_hidden(node_ids, hidden=False)
+    return await set_hidden(node_ids, hidden=False)

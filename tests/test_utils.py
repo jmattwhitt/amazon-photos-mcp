@@ -22,25 +22,29 @@ from amazon_photos_mcp.errors import AuthenticationError, RateLimitError, Resour
 
 
 class TestNormalizeCookies:
-    def test_adds_underscore_variant_when_missing(self):
+    @pytest.mark.asyncio
+    async def test_adds_underscore_variant_when_missing(self):
         raw = {"ubid-main": "abc", "at-main": "xyz", "session-id": "s"}
         result = mod_client._normalize_cookies(raw)
         assert result["ubid_main"] == "abc"
         assert result["at_main"] == "xyz"
 
-    def test_adds_hyphen_variant_when_missing(self):
+    @pytest.mark.asyncio
+    async def test_adds_hyphen_variant_when_missing(self):
         raw = {"ubid_main": "abc", "at_main": "xyz"}
         result = mod_client._normalize_cookies(raw)
         assert result["ubid-main"] == "abc"
         assert result["at-main"] == "xyz"
 
-    def test_keeps_both_when_both_present(self):
+    @pytest.mark.asyncio
+    async def test_keeps_both_when_both_present(self):
         raw = {"ubid-main": "hyph", "ubid_main": "under", "at-main": "x", "at_main": "y"}
         result = mod_client._normalize_cookies(raw)
         assert result["ubid-main"] == "hyph"
         assert result["ubid_main"] == "under"
 
-    def test_preserves_unrelated_keys(self):
+    @pytest.mark.asyncio
+    async def test_preserves_unrelated_keys(self):
         raw = {"ubid-main": "a", "at-main": "b", "session-id": "sid", "x-custom": "val"}
         result = mod_client._normalize_cookies(raw)
         assert result["x-custom"] == "val"
@@ -53,14 +57,16 @@ class TestNormalizeCookies:
 
 
 class TestLoadCookies:
-    def test_loads_from_env_var(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_loads_from_env_var(self, monkeypatch):
         cookies = {"ubid-main": "env-val", "at-main": "t"}
         monkeypatch.setenv("AMAZON_PHOTOS_COOKIES", json.dumps(cookies))
         result = mod_client._load_cookies()
         assert result is not None
         assert result["ubid-main"] == "env-val"
 
-    def test_loads_from_file(self, tmp_path: Path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_loads_from_file(self, tmp_path: Path, monkeypatch):
         monkeypatch.delenv("AMAZON_PHOTOS_COOKIES", raising=False)
         cookies = {"ubid-main": "file-val", "at-main": "t"}
         p = tmp_path / "cookies.json"
@@ -70,14 +76,16 @@ class TestLoadCookies:
         assert result is not None
         assert result["ubid-main"] == "file-val"
 
-    def test_returns_none_when_nothing_configured(self, monkeypatch, tmp_path):
+    @pytest.mark.asyncio
+    async def test_returns_none_when_nothing_configured(self, monkeypatch, tmp_path):
         monkeypatch.delenv("AMAZON_PHOTOS_COOKIES", raising=False)
         non_existent = tmp_path / "no_cookies.json"
         with patch("amazon_photos_mcp.client._AMAZON_COOKIE_PATH", non_existent):
             result = mod_client._load_cookies()
         assert result is None
 
-    def test_env_var_takes_precedence_over_file(self, tmp_path: Path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_env_var_takes_precedence_over_file(self, tmp_path: Path, monkeypatch):
         cookies_env = {"ubid-main": "from-env", "at-main": "t"}
         cookies_file = {"ubid-main": "from-file", "at-main": "t"}
         monkeypatch.setenv("AMAZON_PHOTOS_COOKIES", json.dumps(cookies_env))
@@ -94,7 +102,8 @@ class TestLoadCookies:
 
 
 class TestCookieAgeHours:
-    def test_returns_none_when_file_missing(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_returns_none_when_file_missing(self, tmp_path: Path):
         with (
             patch("amazon_photos_mcp.client._AMAZON_COOKIE_PATH", tmp_path / "no_cookies.json"),
             patch("amazon_photos_mcp.client._COOKIE_STAT_CACHE_TTL", 0),
@@ -102,7 +111,8 @@ class TestCookieAgeHours:
             mod_client._invalidate_cookie_cache()
             assert mod_client._cookie_age_hours() is None
 
-    def test_returns_approximate_age_hours(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_returns_approximate_age_hours(self, tmp_path: Path):
         p = tmp_path / "cookies.json"
         p.write_text("{}")
         age_seconds = 5 * 3600  # 5 hours ago
@@ -116,7 +126,8 @@ class TestCookieAgeHours:
         assert age is not None
         assert 4.9 <= age <= 5.1
 
-    def test_returns_none_when_file_disappears(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_returns_none_when_file_disappears(self, tmp_path: Path):
         p = tmp_path / "cookies.json"
         p.write_text("{}")
         with (
@@ -137,7 +148,8 @@ class TestCookieAgeHours:
 
 
 class TestCookieAdvice:
-    def test_advice_missing_file(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_advice_missing_file(self, tmp_path: Path):
         with (
             patch("amazon_photos_mcp.client._AMAZON_COOKIE_PATH", tmp_path / "missing.json"),
             patch("amazon_photos_mcp.client._COOKIE_STAT_CACHE_TTL", 0),
@@ -145,7 +157,8 @@ class TestCookieAdvice:
             mod_client._invalidate_cookie_cache()
             assert "not found" in mod_client.cookie_advice().lower()
 
-    def test_advice_fresh(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_advice_fresh(self, tmp_path: Path):
         p = tmp_path / "cookies.json"
         p.write_text("{}")
         with (
@@ -155,7 +168,8 @@ class TestCookieAdvice:
             mod_client._invalidate_cookie_cache()
             assert "fresh" in mod_client.cookie_advice().lower()
 
-    def test_advice_stale(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_advice_stale(self, tmp_path: Path):
         p = tmp_path / "cookies.json"
         p.write_text("{}")
         stale_mtime = time.time() - (50 * 3600)  # 50h — in warn zone
@@ -167,7 +181,8 @@ class TestCookieAdvice:
             mod_client._invalidate_cookie_cache()
             assert "stale" in mod_client.cookie_advice().lower()
 
-    def test_advice_expired(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_advice_expired(self, tmp_path: Path):
         p = tmp_path / "cookies.json"
         p.write_text("{}")
         expired_mtime = time.time() - (80 * 3600)
@@ -181,7 +196,8 @@ class TestCookieAdvice:
 
 
 class TestInvalidateCookieCache:
-    def test_resets_global_cache_state(self, tmp_path: Path):
+    @pytest.mark.asyncio
+    async def test_resets_global_cache_state(self, tmp_path: Path):
         p = tmp_path / "cookies.json"
         p.write_text("{}")
         with (
@@ -200,14 +216,16 @@ class TestInvalidateCookieCache:
 
 
 class TestToolDecorator:
-    def test_passes_through_success(self):
+    @pytest.mark.asyncio
+    async def test_passes_through_success(self):
         @mod_decorators._tool
         def fn():
             return {"ok": True}
 
         assert fn() == {"ok": True}
 
-    def test_catches_authentication_error(self):
+    @pytest.mark.asyncio
+    async def test_catches_authentication_error(self):
         @mod_decorators._tool
         def fn():
             raise AuthenticationError()
@@ -222,7 +240,8 @@ class TestToolDecorator:
         assert result["code"] == "AUTH_REQUIRED"
         assert "suggestion" in result
 
-    def test_catches_rate_limit_error(self):
+    @pytest.mark.asyncio
+    async def test_catches_rate_limit_error(self):
         @mod_decorators._tool
         def fn():
             raise RateLimitError(retry_after=30)
@@ -232,7 +251,8 @@ class TestToolDecorator:
         assert result["code"] == "RATE_LIMITED"
         assert result["retry_after_seconds"] == 30
 
-    def test_catches_resource_not_found(self):
+    @pytest.mark.asyncio
+    async def test_catches_resource_not_found(self):
         @mod_decorators._tool
         def fn():
             raise ResourceNotFoundError("album", "abc-123")
@@ -242,7 +262,8 @@ class TestToolDecorator:
         assert result["code"] == "NOT_FOUND"
         assert result["resource_type"] == "album"
 
-    def test_unexpected_error_includes_tool_name(self):
+    @pytest.mark.asyncio
+    async def test_unexpected_error_includes_tool_name(self):
         @mod_decorators._tool
         def my_special_tool():
             raise ValueError("something weird")
@@ -251,7 +272,8 @@ class TestToolDecorator:
         assert result["code"] == "UNEXPECTED_ERROR"
         assert result["tool"] == "my_special_tool"
 
-    def test_preserves_function_name(self):
+    @pytest.mark.asyncio
+    async def test_preserves_function_name(self):
         @mod_decorators._tool
         def named_fn():
             return {}
@@ -265,27 +287,33 @@ class TestToolDecorator:
 
 
 class TestSafeDfToList:
-    def test_returns_empty_for_none(self):
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_none(self):
         assert mod_utils._safe_df_to_list(None) == []
 
-    def test_returns_empty_for_empty_df(self):
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_empty_df(self):
         assert mod_utils._safe_df_to_list([]) == []
 
-    def test_respects_max_results(self):
+    @pytest.mark.asyncio
+    async def test_respects_max_results(self):
         df = [{"id": f"node-{i}"} for i in range(100)]
         assert len(mod_utils._safe_df_to_list(df, max_results=10)) == 10
 
-    def test_deduplicates_by_id(self):
+    @pytest.mark.asyncio
+    async def test_deduplicates_by_id(self):
         df = [{"id": "a", "name": "x"}, {"id": "a", "name": "x"}, {"id": "b", "name": "y"}]
         assert len(mod_utils._safe_df_to_list(df, max_results=50)) == 3
 
-    def test_slim_filters_to_known_fields(self):
+    @pytest.mark.asyncio
+    async def test_slim_filters_to_known_fields(self):
         df = [{"id": "n1", "name": "photo.jpg", "some_other_field": "trash", "size": 100}]
         result = mod_utils._safe_df_to_list(df, max_results=10, slim=True)
         assert "some_other_field" in result[0]
         assert "id" in result[0]
 
-    def test_handles_list_input(self):
+    @pytest.mark.asyncio
+    async def test_handles_list_input(self):
         data = [{"id": "a"}, {"id": "b"}, {"id": "c"}]
         assert mod_utils._safe_df_to_list(data, max_results=2) == [{"id": "a"}, {"id": "b"}]
 
@@ -293,34 +321,39 @@ class TestSafeDfToList:
 class TestToolAnnotations:
     """Verify every registered tool has appropriate annotations."""
 
-    def test_read_only_tools_have_read_only_hint(self) -> None:
+    @pytest.mark.asyncio
+    async def test_read_only_tools_have_read_only_hint(self) -> None:
         from amazon_photos_mcp.server import _READ_ONLY_TOOLS, _tool_annotations
 
         for name in _READ_ONLY_TOOLS:
             ann = _tool_annotations(name)
             assert ann.get("readOnlyHint") is True, f"{name} missing readOnlyHint"
 
-    def test_destructive_tools_have_destructive_hint(self) -> None:
+    @pytest.mark.asyncio
+    async def test_destructive_tools_have_destructive_hint(self) -> None:
         from amazon_photos_mcp.server import _DESTRUCTIVE_TOOLS, _tool_annotations
 
         for name in _DESTRUCTIVE_TOOLS:
             ann = _tool_annotations(name)
             assert ann.get("destructiveHint") is True, f"{name} missing destructiveHint"
 
-    def test_idempotent_tools_have_idempotent_hint(self) -> None:
+    @pytest.mark.asyncio
+    async def test_idempotent_tools_have_idempotent_hint(self) -> None:
         from amazon_photos_mcp.server import _IDEMPOTENT_TOOLS, _tool_annotations
 
         for name in _IDEMPOTENT_TOOLS:
             ann = _tool_annotations(name)
             assert ann.get("idempotentHint") is True, f"{name} missing idempotentHint"
 
-    def test_no_overlap_read_only_and_destructive(self) -> None:
+    @pytest.mark.asyncio
+    async def test_no_overlap_read_only_and_destructive(self) -> None:
         from amazon_photos_mcp.server import _DESTRUCTIVE_TOOLS, _READ_ONLY_TOOLS
 
         overlap = _READ_ONLY_TOOLS & _DESTRUCTIVE_TOOLS
         assert not overlap, f"Tools in both sets: {overlap}"
 
-    def test_all_tool_names_are_valid(self) -> None:
+    @pytest.mark.asyncio
+    async def test_all_tool_names_are_valid(self) -> None:
         """Every tool registered with mcp should have annotations defined."""
         from amazon_photos_mcp.server import _tool_annotations, mcp
 
@@ -337,14 +370,16 @@ class TestToolAnnotations:
 
 
 class TestRateLimiter:
-    def test_token_bucket_allows_within_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_token_bucket_allows_within_limit(self) -> None:
         from amazon_photos_mcp.rate_limiter import TokenBucket
 
         bucket = TokenBucket(rate=100.0, capacity=10)
         for _ in range(5):
             assert bucket.consume(1) is True
 
-    def test_token_bucket_blocks_when_exhausted(self) -> None:
+    @pytest.mark.asyncio
+    async def test_token_bucket_blocks_when_exhausted(self) -> None:
         from amazon_photos_mcp.rate_limiter import TokenBucket
 
         bucket = TokenBucket(rate=0.0, capacity=0)
@@ -356,7 +391,8 @@ class TestRateLimiter:
 
 
 class TestCookieEncryption:
-    def test_roundtrip_encrypted_cookies(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_roundtrip_encrypted_cookies(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.crypto import load_encrypted_cookies, save_encrypted_cookies
 
         path = tmp_path / "cookies.json"
@@ -365,7 +401,8 @@ class TestCookieEncryption:
         loaded = load_encrypted_cookies(path)
         assert loaded == original
 
-    def test_encrypted_file_has_magic_header(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_encrypted_file_has_magic_header(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.crypto import save_encrypted_cookies
 
         path = tmp_path / "cookies.json"
@@ -373,7 +410,8 @@ class TestCookieEncryption:
         raw = path.read_bytes()
         assert raw[:4] == b"AMCP"
 
-    def test_load_encrypted_reads_plaintext_fallback(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_load_encrypted_reads_plaintext_fallback(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.crypto import load_encrypted_cookies
 
         path = tmp_path / "cookies.json"
@@ -381,20 +419,23 @@ class TestCookieEncryption:
         cookies = load_encrypted_cookies(path)
         assert cookies == {"plain": "text"}
 
-    def test_load_encrypted_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_load_encrypted_returns_none_for_missing_file(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.crypto import load_encrypted_cookies
 
         path = tmp_path / "nonexistent.json"
         assert load_encrypted_cookies(path) is None
 
-    def test_load_encrypted_returns_none_for_corrupt_data(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_load_encrypted_returns_none_for_corrupt_data(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.crypto import load_encrypted_cookies
 
         path = tmp_path / "broken.json"
         path.write_text("this is not valid json {{{")
         assert load_encrypted_cookies(path) is None
 
-    def test_load_encrypted_returns_none_for_corrupted_encrypted(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_load_encrypted_returns_none_for_corrupted_encrypted(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.crypto import DecryptionError, load_encrypted_cookies
 
         path = tmp_path / "bad_encrypted.json"
@@ -404,7 +445,8 @@ class TestCookieEncryption:
         with pytest.raises(DecryptionError):
             load_encrypted_cookies(path)
 
-    def test_load_encrypted_propagates_os_error_not_decryption_error(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_load_encrypted_propagates_os_error_not_decryption_error(self, tmp_path: Path) -> None:
         """Permission/disk errors should return None, not raise DecryptionError."""
         from unittest.mock import patch
 
@@ -418,7 +460,8 @@ class TestCookieEncryption:
             result = load_encrypted_cookies(path)
             assert result is None
 
-    def test_machine_key_is_deterministic(self) -> None:
+    @pytest.mark.asyncio
+    async def test_machine_key_is_deterministic(self) -> None:
         from amazon_photos_mcp.crypto import _machine_key
 
         k1 = _machine_key()
@@ -433,36 +476,42 @@ class TestCookieEncryption:
 
 
 class TestPerceptualHash:
-    def test_hamming_distance_identical(self) -> None:
+    @pytest.mark.asyncio
+    async def test_hamming_distance_identical(self) -> None:
         from amazon_photos_mcp.phash import hamming_distance
 
         assert hamming_distance("a0b1c2d3e4f5a0b1", "a0b1c2d3e4f5a0b1") == 0
 
-    def test_hamming_distance_different(self) -> None:
+    @pytest.mark.asyncio
+    async def test_hamming_distance_different(self) -> None:
         from amazon_photos_mcp.phash import hamming_distance
 
         dist = hamming_distance("a" * 16, "b" * 16)
         assert dist > 0
 
-    def test_hamming_distance_different_lengths(self) -> None:
+    @pytest.mark.asyncio
+    async def test_hamming_distance_different_lengths(self) -> None:
         from amazon_photos_mcp.phash import hamming_distance
 
         assert hamming_distance("a", "bb") == 8
 
-    def test_find_near_duplicates_empty(self) -> None:
+    @pytest.mark.asyncio
+    async def test_find_near_duplicates_empty(self) -> None:
         from amazon_photos_mcp.phash import find_near_duplicates
 
-        groups = find_near_duplicates({})
+        groups = await find_near_duplicates({})
         assert groups == []
 
-    def test_find_near_duplicates_no_matches(self) -> None:
+    @pytest.mark.asyncio
+    async def test_find_near_duplicates_no_matches(self) -> None:
         from amazon_photos_mcp.phash import find_near_duplicates
 
         hashes = {"id1": "a" * 16, "id2": "f" * 16}
-        groups = find_near_duplicates(hashes, threshold=2)
+        groups = await find_near_duplicates(hashes, threshold=2)
         assert groups == []
 
-    def test_compute_phash_returns_none_for_non_image(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_compute_phash_returns_none_for_non_image(self, tmp_path: Path) -> None:
         from amazon_photos_mcp.phash import compute_phash
 
         bad_file = tmp_path / "not_an_image.txt"
@@ -477,14 +526,16 @@ class TestPerceptualHash:
 
 
 class TestCircuitBreaker:
-    def test_starts_closed(self):
+    @pytest.mark.asyncio
+    async def test_starts_closed(self):
         from amazon_photos_mcp.rate_limiter import CircuitBreaker
 
         cb = CircuitBreaker()
         assert cb.state == "closed"
         assert cb.is_allowed() is True
 
-    def test_opens_after_threshold_failures(self):
+    @pytest.mark.asyncio
+    async def test_opens_after_threshold_failures(self):
         from amazon_photos_mcp.rate_limiter import CircuitBreaker
 
         cb = CircuitBreaker(threshold=3, window_s=60, cooldown_s=30)
@@ -496,7 +547,8 @@ class TestCircuitBreaker:
         assert cb.state == "open"
         assert cb.is_allowed() is False
 
-    def test_closes_on_success(self):
+    @pytest.mark.asyncio
+    async def test_closes_on_success(self):
         from amazon_photos_mcp.rate_limiter import CircuitBreaker
 
         cb = CircuitBreaker(threshold=2, window_s=60, cooldown_s=30)
@@ -507,7 +559,8 @@ class TestCircuitBreaker:
         assert cb.state == "closed"
         assert cb.is_allowed() is True
 
-    def test_half_open_probe_on_cooldown(self):
+    @pytest.mark.asyncio
+    async def test_half_open_probe_on_cooldown(self):
         from amazon_photos_mcp.rate_limiter import CircuitBreaker
 
         cb = CircuitBreaker(threshold=1, window_s=60, cooldown_s=0)
@@ -517,7 +570,8 @@ class TestCircuitBreaker:
         assert cb.is_allowed() is True
         assert cb.state == "half_open"
 
-    def test_thread_safety(self):
+    @pytest.mark.asyncio
+    async def test_thread_safety(self):
         import concurrent.futures
 
         from amazon_photos_mcp.rate_limiter import CircuitBreaker
@@ -536,7 +590,8 @@ class TestCircuitBreaker:
 
 
 class TestTokenBucketRetryAfter:
-    def test_derives_retry_after_from_bucket(self):
+    @pytest.mark.asyncio
+    async def test_derives_retry_after_from_bucket(self):
         from amazon_photos_mcp.rate_limiter import TokenBucket
 
         bucket = TokenBucket(rate=1.0, capacity=5)
@@ -554,7 +609,8 @@ class TestTokenBucketRetryAfter:
 
 
 class TestToolAuthRefresh:
-    def test_auto_refresh_on_authentication_error(self):
+    @pytest.mark.asyncio
+    async def test_auto_refresh_on_authentication_error(self):
         from unittest.mock import patch
 
         import amazon_photos_mcp.decorators as mod_decorators

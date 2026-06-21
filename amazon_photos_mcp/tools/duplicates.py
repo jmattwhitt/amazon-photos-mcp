@@ -13,18 +13,18 @@ from amazon_photos_mcp.server import _tool_annotations, mcp
 from amazon_photos_mcp.utils import _clean_row
 
 
-def _get_items(ap: Any) -> list[dict[str, Any]] | None:
+async def _get_items(ap: Any) -> list[dict[str, Any]] | None:
     """Fetch all items and return a list, or None if empty."""
-    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    items = await ap.query("type:(PHOTOS OR VIDEOS)")
     return items if items else None
 
 
 @mcp.tool(annotations=_tool_annotations("find_duplicates"))
 @_tool
-def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
+async def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
     """Find exact duplicate files in your library by MD5 hash. Read-only."""
     ap = _get_client()
-    items = _get_items(ap)
+    items = await _get_items(ap)
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
@@ -70,10 +70,10 @@ def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("preview_duplicate_group"))
 @_tool
-def preview_duplicate_group(md5_hash: str) -> dict[str, Any]:
+async def preview_duplicate_group(md5_hash: str) -> dict[str, Any]:
     """Show all copies of an MD5 hash with full metadata, oldest first."""
     ap = _get_client()
-    items = _get_items(ap)
+    items = await _get_items(ap)
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
@@ -93,7 +93,7 @@ def preview_duplicate_group(md5_hash: str) -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("find_near_duplicates"))
 @_tool
-def find_near_duplicates(
+async def find_near_duplicates(
     threshold: int = 5,
     max_groups: int = 50,
     sample_size: int = 200,
@@ -114,7 +114,7 @@ def find_near_duplicates(
     from amazon_photos_mcp.phash import find_near_duplicates as _find_near
 
     ap = _get_client()
-    items = _get_items(ap)
+    items = await _get_items(ap)
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
@@ -139,7 +139,7 @@ def find_near_duplicates(
 
     try:
         photo_ids = [item["id"] for item in photos]
-        ap.download(photo_ids, out=str(temp_dir))
+        await ap.download(photo_ids, out=str(temp_dir))
 
         for f in temp_dir.iterdir():
             if f.is_file():
@@ -167,10 +167,10 @@ def find_near_duplicates(
 
 @mcp.tool(annotations=_tool_annotations("keep_specific"))
 @_tool
-def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str, Any]:
+async def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str, Any]:
     """Keep a specific copy and trash all other duplicates in an MD5 group."""
     ap = _get_client()
-    items = _get_items(ap)
+    items = await _get_items(ap)
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
@@ -191,7 +191,7 @@ def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str
             "message": f"Would trash {len(trash_ids)} copy/copies. Set dry_run=False to execute.",
         }
 
-    ap.trash(trash_ids)
+    await ap.trash(trash_ids)
     return {
         "status": "ok",
         "action": "trashed",
@@ -204,13 +204,13 @@ def keep_specific(keep_id: str, md5_hash: str, dry_run: bool = True) -> dict[str
 
 @mcp.tool(annotations=_tool_annotations("trash_duplicates"))
 @_tool
-def trash_duplicates(
+async def trash_duplicates(
     md5_hashes: list[str] | None = None,
     dry_run: bool = True,
 ) -> dict[str, Any]:
     """Trash duplicate copies, keeping the oldest of each MD5 group."""
     ap = _get_client()
-    items = _get_items(ap)
+    items = await _get_items(ap)
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
@@ -266,7 +266,7 @@ def trash_duplicates(
             for item in items if item.get("id") in trash_ids[:10]
         ]
     else:
-        ap.trash(trash_ids)
+        await ap.trash(trash_ids)
         result["message"] = f"Trashed {len(trash_ids)} duplicate copies. Items are recoverable from trash for 30 days."
 
     return result
@@ -274,7 +274,7 @@ def trash_duplicates(
 
 @mcp.tool(annotations=_tool_annotations("trash_near_duplicates"))
 @_tool
-def trash_near_duplicates(
+async def trash_near_duplicates(
     group: list[str],
     dry_run: bool = True,
     keep_strategy: str = "best_quality",
@@ -292,7 +292,7 @@ def trash_near_duplicates(
             "newest" - keeps the newest
     """
     ap = _get_client()
-    items = _get_items(ap)
+    items = await _get_items(ap)
     if not items:
         return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
 
@@ -351,7 +351,7 @@ def trash_near_duplicates(
             "Set dry_run=False to execute."
         )
     else:
-        ap.trash(trash_ids)
+        await ap.trash(trash_ids)
         result["message"] = (
             f"Kept '{keep.get('name')}' and trashed {len(trash_ids)} near-duplicate(s). "
             "Recoverable from trash for 30 days."

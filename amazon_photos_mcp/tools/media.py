@@ -22,10 +22,10 @@ from amazon_photos_mcp.utils import PIPELINE_DEFAULT_DIR, _safe_df_to_list
 
 @mcp.tool(annotations=_tool_annotations("get_photo_url"))
 @_tool
-def get_photo_url(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
+async def get_photo_url(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
     """Get the direct download URL for a photo/video by node ID."""
     ap = _get_client()
-    result = ap.get_file(node_id)
+    result = await ap.get_file(node_id)
     url = None
     if isinstance(result, dict):
         data = result
@@ -39,14 +39,14 @@ def get_photo_url(node_id: Annotated[str, Field(description="The Amazon Photos n
 
 @mcp.tool(annotations=_tool_annotations("get_exif_data"))
 @_tool
-def get_exif_data(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
+async def get_exif_data(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
     """Get EXIF metadata for a photo by node ID. Falls back to local parquet DB if API doesn't expose EXIF."""
     from amazon_photos_mcp.utils import _clean_row
 
     ap = _get_client()
 
     try:
-        result = ap.get_file(node_id)
+        result = await ap.get_file(node_id)
         if isinstance(result, dict):
             data = result
             exif: dict[str, Any] = {}
@@ -58,33 +58,31 @@ def get_exif_data(node_id: Annotated[str, Field(description="The Amazon Photos n
     except Exception:
         pass
 
-    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    items = await ap.query(f"type:(PHOTOS OR VIDEOS) AND id:({node_id})")
     if not items:
-        return {"error": True, "code": "NO_DATA", "message": "Library is empty."}
-    for item in items:
-        if item.get("id") == node_id:
-            row = _clean_row(item)
-            exif = {}
-            for section in ("image", "video", "exifData", "media"):
-                if section in row and isinstance(row[section], dict):
-                    exif.update(row[section])
-            # Also grab direct keys matching exif patterns
-            for k in ("camera", "gps", "iso", "exposure", "aperture", "focal"):
-                if k in row and row[k] is not None:
-                    exif[k] = row[k]
-            return {
-                "node_id": node_id,
-                "source": "local_db",
-                "exif": exif,
-                "note": "Upstream library did not return EXIF via API; showing indexed fields from local cache.",
-            }
+        return {"error": True, "code": "NO_DATA", "message": "Node not found in search index."}
 
-    return {"node_id": node_id, "exif": {}, "note": "No EXIF data found."}
+    item = items[0]
+    row = _clean_row(item)
+    exif = {}
+    for section in ("image", "video", "exifData", "media"):
+        if section in row and isinstance(row[section], dict):
+            exif.update(row[section])
+    # Also grab direct keys matching exif patterns
+    for k in ("camera", "gps", "iso", "exposure", "aperture", "focal"):
+        if k in row and row[k] is not None:
+            exif[k] = row[k]
+    return {
+        "node_id": node_id,
+        "source": "api_search",
+        "exif": exif,
+        "note": "Upstream library did not return EXIF via direct API; showing indexed fields from search.",
+    }
 
 
 @mcp.tool(annotations=_tool_annotations("get_thumbnail"))
 @_tool
-def get_thumbnail(
+async def get_thumbnail(
     node_id: Annotated[str, Field(description="The Amazon Photos node ID")],
     max_size: Annotated[int, Field(ge=0, description="Maximum dimension in pixels. 0 for default.")] = 0,
 ) -> dict[str, Any]:
@@ -103,7 +101,7 @@ def get_thumbnail(
     from curl_cffi import requests as curl_req
 
     ap = _get_client()
-    result = ap.get_file(node_id)
+    result = await ap.get_file(node_id)
     url = None
 
     if isinstance(result, dict):
@@ -114,9 +112,9 @@ def get_thumbnail(
 
     try:
         http_client = getattr(ap, "client", None)
-        s = http_client if http_client is not None else curl_req.Session()
+        s = http_client if http_client is not None else curl_req.AsyncSession()
 
-        with s.stream("GET", url, timeout=30) as r:
+        async with s.stream("GET", url, timeout=30) as r:
             r.raise_for_status()
 
             ctype = r.headers.get("Content-Type", "")
@@ -129,7 +127,19 @@ def get_thumbnail(
                 }
 
             size_limit = 50 * 1024 * 1024  # 50 MB
-            content = r.content
+            content_length = int(r.headers.get("Content-Length", 0))
+            if content_length > size_limit:
+                return {
+                    "node_id": node_id,
+                    "thumbnail_base64": None,
+                    "url": url,
+                    "fallback": (
+                        f"Image too large to generate thumbnail "
+                        f"({content_length / 1024 / 1024:.1f} MB). Use the URL to view."
+                    ),
+                }
+
+            content = await r.aread()
             if len(content) > size_limit:
                 return {
                     "node_id": node_id,
@@ -173,7 +183,7 @@ def get_thumbnail(
 
 @mcp.tool(annotations=_tool_annotations("get_download_progress"))
 @_tool
-def get_download_progress() -> dict[str, Any]:
+async def get_download_progress() -> dict[str, Any]:
     """Check progress of an ongoing download_library operation.
 
     Reads the progress file written by download_library (if progress_file param was given).
@@ -205,7 +215,7 @@ def get_download_progress() -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("download"))
 @_tool
-def download(
+async def download(
     node_ids: Annotated[list[str] | None, Field(description="List of node IDs to download")] = None,
     query: Annotated[str, Field(description="Amazon Photos query string to download")] = "",
     year: Annotated[int | None, Field(description="Download by year (4-digit)")] = None,
@@ -250,7 +260,7 @@ def download(
             parts.append(f"timeMonth:({month})")
         if day:
             parts.append(f"timeDay:({day})")
-        df = ap.query(" ".join(parts))
+        df = await ap.query(" ".join(parts))
         items = _safe_df_to_list(df, min(max_items, 2000))
         if not items:
             return {"status": "no_results", "query": " ".join(parts), "count": 0, "node_ids": []}
@@ -260,7 +270,7 @@ def download(
             output_dir = str(Path.home() / "Downloads" / "amazon-photos" / date_str)
     elif query:
         query_clean = _sanitize_query_value(query)
-        df = ap.query(query_clean)
+        df = await ap.query(query_clean)
         items = _safe_df_to_list(df, min(max_items, 2000))
         if not items:
             return {"status": "no_results", "query": query, "count": 0, "node_ids": []}
@@ -278,7 +288,7 @@ def download(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    ap.download(ids, out=str(out))
+    await ap.download(ids, out=str(out))
 
     return {
         "status": "ok",
@@ -291,7 +301,7 @@ def download(
 
 @mcp.tool(annotations=_tool_annotations("download_library"))
 @_tool
-def download_library(
+async def download_library(
     output_dir: Annotated[str, Field(description="Root directory for downloads")] = "",
     media_type: Annotated[str, Field(description="'PHOTOS' or 'VIDEOS'")] = "PHOTOS",
     max_items: Annotated[int, Field(ge=1, le=10000, description="Max total items")] = 5000,
@@ -328,9 +338,9 @@ def download_library(
 
     # Get all items
     if media_type == "VIDEOS":
-        df = ap.videos()
+        df = await ap.videos()
     else:
-        df = ap.photos()
+        df = await ap.photos()
 
     if df is None or (hasattr(df, "empty") and df.empty):
         return {"status": "no_data", "message": f"No {media_type.lower()} found in library."}
@@ -400,7 +410,7 @@ def download_library(
                 batch_out = out / date_dir
                 batch_out.mkdir(parents=True, exist_ok=True)
                 try:
-                    results = ap.download(date_ids, out=str(batch_out))
+                    results = await ap.download(date_ids, out=str(batch_out))
                     for res in results:
                         if res.get("status") == "ok":
                             downloaded += 1
@@ -414,7 +424,7 @@ def download_library(
             batch_out = out
             batch_out.mkdir(parents=True, exist_ok=True)
             try:
-                results = ap.download(batch, out=str(batch_out))
+                results = await ap.download(batch, out=str(batch_out))
                 for res in results:
                     if res.get("status") == "ok":
                         downloaded += 1
@@ -478,14 +488,14 @@ def download_library(
 
 @mcp.tool(annotations=_tool_annotations("download_files"))
 @_tool
-def download_files(node_ids: list[str], output_dir: str = "") -> dict[str, Any]:
+async def download_files(node_ids: list[str], output_dir: str = "") -> dict[str, Any]:
     """DEPRECATED: Use download(node_ids=[...]) instead."""
-    return download(node_ids=node_ids, output_dir=output_dir)
+    return await download(node_ids=node_ids, output_dir=output_dir)
 
 
 @mcp.tool(annotations=_tool_annotations("download_by_date"))
 @_tool
-def download_by_date(
+async def download_by_date(
     year: int,
     month: int | None = None,
     day: int | None = None,
@@ -494,15 +504,22 @@ def download_by_date(
     max_items: int = 500,
 ) -> dict[str, Any]:
     """DEPRECATED: Use download(year=..., month=..., day=...) instead."""
-    return download(year=year, month=month, day=day, output_dir=output_dir, media_type=media_type, max_items=max_items)
+    return await download(
+        year=year,
+        month=month,
+        day=day,
+        output_dir=output_dir,
+        media_type=media_type,
+        max_items=max_items,
+    )
 
 
 @mcp.tool(annotations=_tool_annotations("download_for_pipeline"))
 @_tool
-def download_for_pipeline(
+async def download_for_pipeline(
     query: str,
     output_dir: str = "",
     max_items: int = 200,
 ) -> dict[str, Any]:
     """DEPRECATED: Use download(query=...) instead."""
-    return download(query=query, output_dir=output_dir, max_items=max_items)
+    return await download(query=query, output_dir=output_dir, max_items=max_items)

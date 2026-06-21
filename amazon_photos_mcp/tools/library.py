@@ -13,7 +13,7 @@ from amazon_photos_mcp.server import _tool_annotations, mcp
 
 @mcp.tool(annotations=_tool_annotations("check_db_integrity"))
 @_tool
-def check_db_integrity() -> dict[str, Any]:
+async def check_db_integrity() -> dict[str, Any]:
     """Validate the local parquet metadata cache: schema, row count, and file age."""
     return {
         "valid": True,
@@ -23,7 +23,7 @@ def check_db_integrity() -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("get_library_stats"))
 @_tool
-def get_library_stats() -> dict[str, Any]:
+async def get_library_stats() -> dict[str, Any]:
     """Get a comprehensive health overview of your Amazon Photos library.
 
     Returns content type breakdown, date range, size distribution,
@@ -37,7 +37,7 @@ def get_library_stats() -> dict[str, Any]:
     stats: dict[str, Any] = {}
 
     # Fetch live data
-    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    items = await ap.query("type:(PHOTOS OR VIDEOS)")
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
@@ -110,19 +110,19 @@ def get_library_stats() -> dict[str, Any]:
         stats["duplicate_groups"] = len(dupe_md5s)
     # --- Folder / album / people counts ---
     try:
-        folders = ap.get_folders()
+        folders = await ap.get_folders()
         stats["folder_count"] = len(folders) if hasattr(folders, "__len__") else None
     except Exception:
         stats["folder_count"] = None
 
     try:
-        albums = ap.albums()
+        albums = await ap.albums()
         stats["album_count"] = len(albums) if hasattr(albums, "__len__") else None
     except Exception:
         stats["album_count"] = None
 
     try:
-        people = ap.aggregations("allPeople")
+        people = await ap.aggregations("allPeople")
         stats["people_count"] = len(people) if isinstance(people, list) else None
     except Exception:
         stats["people_count"] = None
@@ -135,7 +135,7 @@ def get_library_stats() -> dict[str, Any]:
 
     # --- Storage usage vs quota ---
     try:
-        usage = ap.usage()
+        usage = await ap.usage()
         if isinstance(usage, dict):
             stats["storage_used_gb"] = round(usage.get("used", 0) / (1024**3), 2)
             stats["storage_quota_gb"] = round(usage.get("available", 0) / (1024**3), 2)
@@ -150,7 +150,7 @@ def get_library_stats() -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("export_metadata"))
 @_tool
-def export_metadata(
+async def export_metadata(
     fmt: str = "json",
     output_path: str = "",
     include_exif: bool = False,
@@ -172,11 +172,11 @@ def export_metadata(
 
     # Apply filter if provided
     if filter_query:
-        items = ap.query(filter_query)
+        items = await ap.query(filter_query)
         if not items:
             return {"status": "no_results", "query": filter_query, "message": "Query returned no results."}
     else:
-        items = ap.query("type:(PHOTOS OR VIDEOS)")
+        items = await ap.query("type:(PHOTOS OR VIDEOS)")
         if not items:
             return {"status": "no_data", "message": "Library is empty."}
 
@@ -244,7 +244,7 @@ def export_metadata(
 
 @mcp.tool(annotations=_tool_annotations("find_timeline_gaps"))
 @_tool
-def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
+async def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
     """Find gaps in your photo timeline — months/years with few or no photos.
 
     Args:
@@ -255,7 +255,7 @@ def find_timeline_gaps(min_photos_per_month: int = 5) -> dict[str, Any]:
 
     ap = _get_client()
 
-    items = ap.query("type:(PHOTOS OR VIDEOS)")
+    items = await ap.query("type:(PHOTOS OR VIDEOS)")
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 

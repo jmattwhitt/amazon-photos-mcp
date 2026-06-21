@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -71,9 +71,9 @@ def _make_mock_db() -> list[dict[str, Any]]:
 
 
 @pytest.fixture()
-def mock_ap() -> MagicMock:
+def mock_ap() -> AsyncMock:
     """Return a pre-configured mock AmazonPhotos client."""
-    ap = MagicMock()
+    ap = AsyncMock()
     ap.db = _make_mock_db()
 
     # usage()

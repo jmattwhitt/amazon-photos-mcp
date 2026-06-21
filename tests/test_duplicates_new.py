@@ -1,10 +1,13 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from amazon_photos_mcp.tools.duplicates import trash_near_duplicates
 
 
 @patch("amazon_photos_mcp.tools.duplicates._get_client")
-def test_trash_near_duplicates_quality_scoring(mock_get_client):
+@pytest.mark.asyncio
+async def test_trash_near_duplicates_quality_scoring(mock_get_client):
     mock_ap = MagicMock()
     # Provide 3 items:
     # node1: small HEIC
@@ -36,7 +39,7 @@ def test_trash_near_duplicates_quality_scoring(mock_get_client):
     mock_ap.query.return_value = items
     mock_get_client.return_value = mock_ap
 
-    res = trash_near_duplicates(group=["node1", "node2", "node3"], dry_run=True, keep_strategy="best_quality")
+    res = await trash_near_duplicates(group=["node1", "node2", "node3"], dry_run=True, keep_strategy="best_quality")
 
     assert isinstance(res, dict)
     # node3 is the large JPEG, should be kept
@@ -49,5 +52,5 @@ def test_trash_near_duplicates_quality_scoring(mock_get_client):
         {"id": "node2", "createdDate": "2024-01-01"},  # Oldest
     ]
     mock_ap.query.return_value = items2
-    trash_near_duplicates(group=["node1", "node2"], dry_run=True, keep_strategy="oldest")
+    await trash_near_duplicates(group=["node1", "node2"], dry_run=True, keep_strategy="oldest")
     pass

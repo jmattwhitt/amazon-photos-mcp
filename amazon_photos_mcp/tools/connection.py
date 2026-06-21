@@ -13,7 +13,7 @@ from amazon_photos_mcp.server import _tool_annotations, mcp
 
 @mcp.tool(annotations=_tool_annotations("check_connection"))
 @_tool
-def check_connection() -> dict[str, Any]:
+async def check_connection() -> dict[str, Any]:
     """Test connection to Amazon Photos and report storage usage and cookie health."""
     advice = mod_client.cookie_advice()
     age_hours = mod_client._cookie_age_hours()
@@ -26,7 +26,7 @@ def check_connection() -> dict[str, Any]:
         warnings.append(advice)
 
     ap = _get_client()
-    usage = ap.usage()
+    usage = await ap.usage()
     data: dict[str, Any] = usage if isinstance(usage, dict) else {"usage": str(usage)}
     data["status"] = "connected"
     data["cookie_health"] = advice
@@ -39,15 +39,15 @@ def check_connection() -> dict[str, Any]:
 
 @mcp.tool(annotations=_tool_annotations("refresh_client"))
 @_tool
-def refresh_client() -> dict[str, Any]:
+async def refresh_client() -> dict[str, Any]:
     """Force a fresh client connection. Use after updating cookies.json."""
     _get_client(force_refresh=True)
-    return check_connection()
+    return await check_connection()
 
 
 @mcp.tool(annotations=_tool_annotations("validate_cookies"))
 @_tool
-def validate_cookies() -> dict[str, Any]:
+async def validate_cookies() -> dict[str, Any]:
     """Check whether stored cookies are still accepted by Amazon."""
     age_hours = mod_client._cookie_age_hours()
     if age_hours is None or age_hours >= mod_client._COOKIE_EXPIRED_AFTER_HOURS:
@@ -58,7 +58,7 @@ def validate_cookies() -> dict[str, Any]:
         }
     try:
         ap = _get_client()
-        ap.usage()  # 401 raises AuthenticationError in _request_with_retry
+        await ap.usage()  # 401 raises AuthenticationError in _request_with_retry
         return {
             "valid": True,
             "cookie_age_hours": round(age_hours, 1) if age_hours is not None else None,

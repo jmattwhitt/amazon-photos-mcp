@@ -12,15 +12,15 @@ from amazon_photos_mcp.utils import _safe_df_to_result
 
 @mcp.tool(annotations=_tool_annotations("list_folders"))
 @_tool
-def list_folders() -> dict[str, Any]:
+async def list_folders() -> dict[str, Any]:
     """List all folders in your Amazon Photos library."""
     ap = _get_client()
-    df = ap.get_folders()
+    df = await ap.get_folders()
     return _safe_df_to_result(df, max_results=500)
 
 
 @mcp.tool(annotations=_tool_annotations("get_folder_tree"))
 @_tool
-def get_folder_tree() -> dict[str, Any]:
+async def get_folder_tree() -> dict[str, Any]:
     """Display the folder tree of your Amazon Photos library."""
     return {"tree": "Folder tree printing is deprecated in the native API client. Use list_folders instead."}

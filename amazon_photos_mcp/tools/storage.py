@@ -11,17 +11,17 @@ from amazon_photos_mcp.server import _tool_annotations, mcp
 
 @mcp.tool(annotations=_tool_annotations("get_storage_usage"))
 @_tool
-def get_storage_usage() -> dict[str, Any]:
+async def get_storage_usage() -> dict[str, Any]:
     """Get Amazon Photos storage usage (plan, space used, photo/video counts)."""
     ap = _get_client()
-    usage = ap.usage()
+    usage = await ap.usage()
     return usage if isinstance(usage, dict) else {"usage": str(usage)}
 
 
 @mcp.tool(annotations=_tool_annotations("get_aggregations"))
 @_tool
-def get_aggregations(category: str = "all") -> dict[str, Any]:
+async def get_aggregations(category: str = "all") -> dict[str, Any]:
     """Get auto-generated aggregations: people, things, locations, dates."""
     ap = _get_client()
-    result = ap.aggregations(category)
+    result = await ap.aggregations(category)
     return {"items": result, "count": len(result)}

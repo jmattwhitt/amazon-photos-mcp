@@ -18,7 +18,9 @@ from amazon_photos_mcp.server import _tool_annotations, mcp
 
 @mcp.tool(annotations=_tool_annotations("upload_file"))
 @_tool
-def upload_file(file_path: Annotated[str, Field(description="Absolute path to the file to upload")]) -> dict[str, Any]:
+async def upload_file(
+    file_path: Annotated[str, Field(description="Absolute path to the file to upload")],
+) -> dict[str, Any]:
     """Upload a single file to Amazon Photos. Deduplicates by MD5."""
     path = Path(file_path)
     if not path.exists():
@@ -40,7 +42,7 @@ def upload_file(file_path: Annotated[str, Field(description="Absolute path to th
         else:
             # Windows: os.link requires admin; skip straight to copy
             shutil.copy2(str(path), dest)
-        result = ap.upload(tmp_dir)
+        result = await ap.upload(tmp_dir)
         return {
             "status": "ok",
             "action": "uploaded",
@@ -53,7 +55,7 @@ def upload_file(file_path: Annotated[str, Field(description="Absolute path to th
 
 @mcp.tool(annotations=_tool_annotations("upload_folder"))
 @_tool
-def upload_folder(
+async def upload_folder(
     folder_path: Annotated[str, Field(description="Absolute path to the directory to upload")],
 ) -> dict[str, Any]:
     """Upload all photos/videos in a folder to Amazon Photos (recursive). Deduplicates by MD5."""
@@ -64,7 +66,7 @@ def upload_folder(
         return {"error": True, "code": "INVALID_INPUT", "message": f"Not a folder: {folder_path}"}
 
     ap = _get_client()
-    result = ap.upload(str(path))
+    result = await ap.upload(str(path))
     count = len(result) if isinstance(result, list) else None
     return {
         "status": "ok",

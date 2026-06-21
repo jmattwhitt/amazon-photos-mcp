@@ -4,7 +4,7 @@ import functools
 import os
 import traceback
 from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, Coroutine, ParamSpec, TypeVar
 
 from amazon_photos_mcp.errors import (
     AuthenticationError,
@@ -16,18 +16,18 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def _tool(fn: Callable[P, R]) -> Callable[P, R | dict[str, Any]]:
+def _tool(fn: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Coroutine[Any, Any, R | dict[str, Any]]]:
     @functools.wraps(fn)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | dict[str, Any]:
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | dict[str, Any]:
         try:
-            return fn(*args, **kwargs)
+            return await fn(*args, **kwargs)
         except AuthenticationError as e:
             # One implicit retry: force refresh client and retry once
             try:
                 from amazon_photos_mcp.client import _get_client
 
                 _get_client(force_refresh=True)
-                return fn(*args, **kwargs)
+                return await fn(*args, **kwargs)
             except Exception:
                 pass
             return {
