@@ -300,8 +300,6 @@ async def download(
     }
 
 
-
-
 @mcp.tool(annotations=_tool_annotations("download_library"))
 @_tool
 async def download_library(
