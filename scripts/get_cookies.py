@@ -1,283 +1,150 @@
 """
-Automatically extract Amazon Photos cookies from your browser and save them
-to the MCP config file.
+Easy Amazon Photos cookie extraction using Playwright.
+
+Opens a browser, you sign in to Amazon, press Enter, and cookies
+are saved automatically. No copy-paste, no Firefox install, no
+Chrome encryption issues.
 
 Usage:
-    uv run --extra scripts python scripts/get_cookies.py [--browser chrome|edge|firefox|brave]
-    uv run --extra scripts python scripts/get_cookies.py --manual
+   uv run --extra scripts python scripts/get_cookies.py
 
-Chrome 127+ and Edge 130+ use app-bound encryption that rookie-rs cannot
-decrypt -- even with administrator privileges. Use Firefox (recommended) or
---manual mode for these browsers.
-
-Requires: rookiepy (installed via `uv add --optional scripts rookiepy`)
+First run installs Chromium automatically if needed.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from playwright.sync_api import BrowserContext
 
 CONFIG_DIR = Path.home() / ".config" / "amazon-photos-mcp"
 COOKIE_FILE = CONFIG_DIR / "cookies.json"
-
 REQUIRED_COOKIES = {"ubid-main", "at-main", "session-id"}
-AMAZON_DOMAINS = {".amazon.com", "amazon.com", ".www.amazon.com"}
-
-BROWSERS = ["firefox", "chrome", "edge", "brave", "opera", "chromium", "vivaldi", "librewolf"]
-
-# Firefox stores cookies in plain SQLite -- no encryption, no admin needed.
-# Chrome 127+ / Edge 130+ app-bound encryption is NOT supported by rookie-rs
-# even with admin rights (upstream bugs #84, #95).
-
-APP_BOUND_MSG = "appbound"  # substring rookiepy puts in the error message
 
 
-def _extract_from_browser(browser_name: str) -> dict[str, str]:
-    """Extract Amazon cookies from a specific browser. Raises on failure."""
-    try:
-        import rookiepy
-    except ImportError:
-        print("ERROR: rookiepy not installed. Run:")
-        print("  uv add --optional scripts rookiepy")
-        sys.exit(1)
-
-    fn = getattr(rookiepy, browser_name, None)
-    if fn is None:
-        raise ValueError(f"Browser '{browser_name}' not supported.")
-
-    raw = fn(["amazon.com"])
-
+def _extract_cookies(context: BrowserContext) -> dict[str, str]:
+    """Extract required Amazon cookies from the browser context."""
     cookies: dict[str, str] = {}
-    for c in raw:
-        host = c.get("host", "")
-        name = c.get("name", "")
-        value = c.get("value", "")
-        if any(host.endswith(d) for d in AMAZON_DOMAINS) and name in REQUIRED_COOKIES and value:
-            cookies[name] = value
+    for c in context.cookies():
+        if c["name"] in REQUIRED_COOKIES and c.get("value"):
+            cookies[c["name"]] = c["value"]
     return cookies
 
 
-def _try_all_browsers(preferred: str | None) -> tuple[str, dict[str, str]]:
-    """Try browsers in order. Prints app-bound advice when blocked, falls
-    through to manual-fallback when all browsers fail."""
-    order = BROWSERS[:]
-    if preferred:
-        order = [preferred] + [b for b in order if b != preferred]
-
-    app_bound_browsers: list[str] = []
-    other_errors: list[str] = []
-
-    for browser in order:
-        try:
-            cookies = _extract_from_browser(browser)
-            if cookies:
-                return browser, cookies
-        except Exception as e:
-            msg = str(e).lower()
-            if APP_BOUND_MSG in msg:
-                app_bound_browsers.append(browser)
-            else:
-                other_errors.append(f"  {browser}: {e}")
-
-    # --- App-bound encryption: clear advice instead of exit code 2 ---
-    if app_bound_browsers:
-        _print_app_bound_advice(app_bound_browsers)
-
-    # --- Other errors (or nothing found) ---
-    if other_errors:
-        print("\nCould not extract Amazon cookies from any browser:")
-        for e in other_errors:
-            print(e)
-
-    _print_manual_fallback()
-    sys.exit(1)
-
-
-def _print_app_bound_advice(browsers: list[str]) -> None:
-    """Explain the rookie-rs app-bound encryption limitation."""
-    names = ", ".join(browsers)
-    print(f"\n{names} uses app-bound cookie encryption (Chrome 127+ / Edge 130+).")
-    print("rookie-rs (the underlying Rust library) cannot decrypt these cookies --")
-    print("even with administrator privileges. This is a known upstream limitation:")
-    print("  https://github.com/thewh1teagle/rookie/issues/84")
-    print("  https://github.com/thewh1teagle/rookie/issues/95")
-    print()
-    print("Two options:")
-    print("  1. Install Firefox, sign in to amazon.com, then re-run this script.")
-    print("     Firefox stores cookies in plain SQLite -- no encryption, no admin needed.")
-    print("  2. Use --manual mode to paste cookies from Chrome/Edge DevTools:")
-    print("     uv run --extra scripts python scripts/get_cookies.py --manual")
-
-
-def _manual_mode() -> None:
-    """Interactive manual cookie entry from browser DevTools."""
-    print("\nManual Cookie Entry")
-    print("=" * 50)
-    print()
-    print("1. Open https://www.amazon.com/photos in your browser and sign in.")
-    print("2. Press F12 to open DevTools.")
-    print("3. Go to Application tab > Cookies > https://www.amazon.com")
-    print("4. Copy the VALUE for each cookie below.")
-    print("   (Press Enter to skip optional cookies.)")
-    print()
-    print("Required cookies:")
-    for k in sorted(REQUIRED_COOKIES):
-        print(f"  {k}")
-    print()
-
-    cookies: dict[str, str] = {}
-    for key in sorted(REQUIRED_COOKIES):
-        value = input(f"  {key}: ").strip()
-        if value:
-            cookies[key] = value
-
-    missing = REQUIRED_COOKIES - set(cookies.keys())
-    if missing:
-        print(f"\nERROR: Missing cookies: {', '.join(sorted(missing))}")
-        sys.exit(1)
-
-    _validate(cookies)
-    _write(cookies)
-    print(f"\nCookies saved to {COOKIE_FILE}")
-
-
-def _print_manual_fallback() -> None:
-    print("\n--- Manual fallback ---")
-    print("1. Open https://www.amazon.com/photos in your browser and sign in.")
-    print("2. Press F12 > Application tab > Cookies > https://www.amazon.com")
-    print("3. Copy the values for: ubid-main, at-main, session-id")
-    print(f"4. Create: {COOKIE_FILE}")
-    print('   Contents: {"ubid-main":"...", "at-main":"...", "session-id":"..."}')
-    print("\nOr use --manual for interactive prompts:")
-    print("  uv run --extra scripts python scripts/get_cookies.py --manual")
-
-
-def _validate(cookies: dict[str, str]) -> None:
-    missing = REQUIRED_COOKIES - set(cookies.keys())
-    empty = {k for k, v in cookies.items() if k in REQUIRED_COOKIES and not v.strip()}
-    problems = missing | empty
-    if problems:
-        print(f"\nWARNING: Missing or empty cookies: {', '.join(sorted(problems))}")
-        print("Make sure you are signed in to amazon.com in your browser.")
-        if missing == REQUIRED_COOKIES:
-            sys.exit(1)
-
-
-def _write(cookies: dict[str, str]) -> None:
-    """Write cookies.json including both hyphen and underscore variants."""
-    output = dict(cookies)
-    # amazon_photos library needs underscore variants for TLD detection
-    for hyphen, underscore in [("ubid-main", "ubid_main"), ("at-main", "at_main")]:
-        if hyphen in output:
-            output[underscore] = output[hyphen]
-
-    try:
-        from amazon_photos_mcp.crypto import save_encrypted_cookies
-
-        save_encrypted_cookies(COOKIE_FILE, output)
-        print(f"Cookies saved (encrypted) to {COOKIE_FILE}")
-    except ImportError:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        COOKIE_FILE.write_text(json.dumps(output, indent=2))
-        print(f"Cookies saved (plaintext) to {COOKIE_FILE}")
-        print("WARNING: Cookies stored in plaintext. Install 'cryptography' for encryption:")
-        print("  uv add cryptography")
-        try:
-            import stat
-
-            COOKIE_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        except Exception:
-            pass  # Windows may not honor Unix perms -- not fatal
-
-
 def main() -> None:
-    # Force UTF-8 stdout on Windows so any stray non-ASCII doesn't crash cp1252
+    # Force UTF-8 output on Windows
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
         import io
 
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-    parser = argparse.ArgumentParser(description="Extract Amazon cookies from your browser and save to MCP config.")
-    parser.add_argument(
-        "--browser",
-        choices=BROWSERS,
-        default=None,
-        help="Specific browser to try first (default: tries Chrome then Edge then others).",
-    )
-    parser.add_argument(
-        "--show",
-        action="store_true",
-        help="Print first 12 chars of each saved cookie value (for debugging).",
-    )
-    parser.add_argument(
-        "--manual",
-        action="store_true",
-        help="Skip browser extraction; enter cookie values from DevTools interactively.",
-    )
-    args = parser.parse_args()
-
-    print("Amazon Photos MCP -- Cookie Extractor")
+    print("Amazon Photos MCP -- Easy Cookie Setup")
     print("=" * 42)
+    print()
 
-    # --manual mode: skip browser extraction entirely
-    if args.manual:
-        if COOKIE_FILE.exists():
-            age_h = (time.time() - COOKIE_FILE.stat().st_mtime) / 3600
-            print(f"\nExisting cookies found ({age_h:.0f}h old) at:\n  {COOKIE_FILE}")
-            answer = input("Overwrite? [y/N] ").strip().lower()
-            if answer not in ("y", "yes"):
-                print("Aborted -- existing cookies kept.")
-                sys.exit(0)
-        _manual_mode()
-        if args.show and COOKIE_FILE.exists():
-            from amazon_photos_mcp.crypto import load_encrypted_cookies
+    # Try playwright import
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("Playwright not installed. Run:")
+        print("  uv add --optional scripts playwright")
+        print("  playwright install chromium")
+        sys.exit(1)
 
-            cookies = load_encrypted_cookies(COOKIE_FILE)
-            if cookies:
-                print("\nValues (truncated):")
-                for k in sorted(cookies):
-                    v = cookies[k]
-                    print(f"  {k}: {v[:12]}...")
-        print("\nDone. To activate:")
-        print("  * If Claude Code is open: call the 'refresh_client' MCP tool")
-        print("  * Otherwise: restart Claude Code")
-        return
-
-    # Warn if existing cookies are present
+    # Warn if existing cookies
     if COOKIE_FILE.exists():
         age_h = (time.time() - COOKIE_FILE.stat().st_mtime) / 3600
-        print(f"\nExisting cookies found ({age_h:.0f}h old) at:\n  {COOKIE_FILE}")
+        print(f"Existing cookies found ({age_h:.0f}h old).")
         answer = input("Overwrite? [y/N] ").strip().lower()
         if answer not in ("y", "yes"):
-            print("Aborted -- existing cookies kept.")
-            sys.exit(0)
+            print("Keeping existing cookies.")
+            return
+        print()
 
-    print("\nSearching browser cookie stores...")
-    browser_used, cookies = _try_all_browsers(preferred=args.browser)
-    print(f"  Found cookies in: {browser_used}")
+    print("A browser window will open to amazon.com/photos.")
+    print("Sign in if needed, then press Enter in THIS terminal.")
+    print()
 
-    _validate(cookies)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=False,
+        )
+        context = browser.new_context()
+        page = context.new_page()
 
-    found = sorted(cookies.keys() & REQUIRED_COOKIES)
-    print(f"  Extracted: {', '.join(found)}")
+        try:
+            # Navigate and wait for user sign-in
+            page.goto("https://www.amazon.com/photos", wait_until="domcontentloaded")
+            print("Browser opened. ", end="")
 
-    _write(cookies)
-    print(f"\nSaved to:\n  {COOKIE_FILE}")
+            # Check if already signed in (cookies present before user interaction)
+            cookies = _extract_cookies(context)
+            if set(cookies.keys()) == REQUIRED_COOKIES:
+                print("Already signed in -- no action needed.")
+            else:
+                print("Sign in to Amazon, then press Enter in this terminal...", flush=True)
 
-    if args.show:
-        print("\nValues (truncated):")
-        for k in sorted(cookies):
-            v = cookies[k]
-            print(f"  {k}: {v[:12]}...")
+            # Wait for user (blocks; Ctrl+C to abort if stuck)
+            try:
+                input()
+            except EOFError:
+                pass
 
-    print("\nDone. To activate:")
-    print("  * Claude Code open: call the 'refresh_client' MCP tool")
-    print("  * Otherwise: restart Claude Code")
-    print("\nCookies will expire in ~72h. Re-run this script when they do.")
+            # Extract cookies
+            cookies = _extract_cookies(context)
+            missing = REQUIRED_COOKIES - set(cookies.keys())
+
+            # Retry if missing
+            if missing:
+                print(f"\nMissing cookies: {', '.join(sorted(missing))}")
+                print("Make sure you're signed in to amazon.com/photos.")
+                retry = input("Try again? [Y/n] ").strip().lower()
+                if retry in ("", "y", "yes"):
+                    page.goto("https://www.amazon.com/photos")
+                    print("Check that you're signed in, then press Enter...")
+                    try:
+                        input()
+                    except EOFError:
+                        pass
+                    cookies = _extract_cookies(context)
+                    missing = REQUIRED_COOKIES - set(cookies.keys())
+                    if missing:
+                        print(f"Still missing: {', '.join(sorted(missing))}")
+                        print("Run the script again when you're signed in.")
+                        return
+                else:
+                    return
+
+            if not cookies:
+                print("No Amazon cookies found. Exiting.")
+                return
+
+        finally:
+            browser.close()
+
+    output = dict(cookies)
+
+    try:
+        from amazon_photos_mcp.crypto import save_encrypted_cookies
+
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        save_encrypted_cookies(COOKIE_FILE, output)
+        print(f"Cookies saved (encrypted) to {COOKIE_FILE}")
+    except ImportError:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        COOKIE_FILE.write_text(json.dumps(output, indent=2))
+        print(f"\nCookies saved to {COOKIE_FILE}")
+    print("Values (truncated):")
+    for k in sorted(cookies):
+        print(f"  {k}: {cookies[k][:8]}...")
+    print()
+    print("Done. In Claude Code, call refresh_client to activate.")
+    print("Cookies expire after ~72 hours. Re-run this script when they do.")
 
 
 if __name__ == "__main__":

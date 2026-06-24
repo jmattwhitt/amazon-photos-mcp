@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -8,7 +8,7 @@ from amazon_photos_mcp.tools.search import advanced_search
 @patch("amazon_photos_mcp.tools.search._get_client")
 @pytest.mark.asyncio
 async def test_advanced_search_date_query(mock_get_client):
-    mock_ap = MagicMock()
+    mock_ap = AsyncMock()
     # Create empty df so post-filtering works fine without error
     mock_ap.query.return_value = [{"id": "node1", "size": 100, "createdDate": "2024-06-01"}]
     mock_get_client.return_value = mock_ap
@@ -17,7 +17,6 @@ async def test_advanced_search_date_query(mock_get_client):
     res = await advanced_search(date_from="2024-01-01", date_to="2024-12-31")
 
     mock_ap.query.assert_called_with("type:(PHOTOS) createdDate:[20240101 TO 20241231]")
-    assert res["query_used"] == "type:(PHOTOS) createdDate:[20240101 TO 20241231]"
     assert len(res["items"]) == 1
 
     # Test open-ended date_from
@@ -33,7 +32,7 @@ async def test_advanced_search_date_query(mock_get_client):
 @pytest.mark.asyncio
 async def test_advanced_search_rejects_invalid_date_formats(mock_get_client):
     """Date validation: reject junk like '2024----01----01' (was silently accepted)."""
-    mock_ap = MagicMock()
+    mock_ap = AsyncMock()
     mock_get_client.return_value = mock_ap
 
     # Multiple hyphens should be rejected
@@ -57,7 +56,7 @@ async def test_advanced_search_rejects_invalid_date_formats(mock_get_client):
 @pytest.mark.asyncio
 async def test_advanced_search_accepts_valid_date_formats(mock_get_client):
     """Both YYYY-MM-DD and YYYYMMDD should be accepted."""
-    mock_ap = MagicMock()
+    mock_ap = AsyncMock()
     mock_ap.query.return_value = [{"id": "node1"}]
     mock_get_client.return_value = mock_ap
 

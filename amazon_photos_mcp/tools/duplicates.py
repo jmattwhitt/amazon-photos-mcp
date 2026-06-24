@@ -47,13 +47,15 @@ async def find_duplicates(max_groups: int = 50) -> dict[str, Any]:
             break
         files = []
         for item in md5_groups[md5_hash]:
-            files.append({
-                "id": item.get("id"),
-                "name": item.get("name"),
-                "folder": item.get("parentMap", {}).get("FOLDER"),
-                "createdDate": str(item["createdDate"]) if item.get("createdDate") else None,
-                "size": int(item["size"]) if item.get("size") is not None else None,
-            })
+            files.append(
+                {
+                    "id": item.get("id"),
+                    "name": item.get("name"),
+                    "folder": item.get("parentMap", {}).get("FOLDER"),
+                    "createdDate": str(item["createdDate"]) if item.get("createdDate") else None,
+                    "size": int(item["size"]) if item.get("size") is not None else None,
+                }
+            )
         files.sort(key=lambda f: f["createdDate"] or "")
         groups.append({"md5": str(md5_hash), "count": len(files), "files": files})
 
@@ -263,7 +265,8 @@ async def trash_duplicates(
         )
         result["sample_trashed"] = [
             {"id": item["id"], "name": item.get("name"), "md5": item.get("md5")}
-            for item in items if item.get("id") in trash_ids[:10]
+            for item in items
+            if item.get("id") in trash_ids[:10]
         ]
     else:
         await ap.trash(trash_ids)

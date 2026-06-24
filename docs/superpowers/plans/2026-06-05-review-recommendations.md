@@ -734,7 +734,7 @@ Add to `pyproject.toml` dependencies:
 ```toml
 dependencies = [
     "fastmcp>=2.0.0",
-    "amazon-photos @ git+https://github.com/trevorhobenshield/amazon_photos.git@685c965b5a4ba1ac85d418820ad200e12c18a46d",
+    "amazon-photos",
     "httpx",
     "pyarrow",
     "cryptography>=42.0.0",

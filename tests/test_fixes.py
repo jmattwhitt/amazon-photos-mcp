@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,13 +21,14 @@ class TestToolTracebackSuppression:
         import amazon_photos_mcp.decorators as mod2
 
         @mod2._tool
-        def bad_tool():
+        async def bad_tool():
             raise ValueError("secret internal detail")
 
-        result = bad_tool()
+        result = await bad_tool()
         assert result["error"] is True
         assert result["code"] == "UNEXPECTED_ERROR"
-        assert "traceback" not in result
+        assert "Traceback" not in str(result.get("message", ""))
+        assert "secret internal detail" in str(result.get("message", ""))
 
     @pytest.mark.asyncio
     async def test_traceback_included_when_debug_enabled(self, monkeypatch) -> None:
@@ -37,10 +38,10 @@ class TestToolTracebackSuppression:
         import amazon_photos_mcp.decorators as mod2
 
         @mod2._tool
-        def bad_tool():
+        async def bad_tool():
             raise ValueError("debug mode")
 
-        result = bad_tool()
+        result = await bad_tool()
         assert result["error"] is True
         assert "traceback" in result
         assert "debug mode" in result["traceback"]
@@ -83,29 +84,29 @@ class TestResolvePersonCluster:
     @pytest.mark.asyncio
     async def test_resolves_known_name(self) -> None:
 
-        mock_ap = MagicMock()
+        mock_ap = AsyncMock()
         mock_ap.aggregations.return_value = [
             {"value": "cluster-abc", "count": 42, "searchData": {"clusterName": "Alice"}},
         ]
-        result = _resolve_person_cluster(mock_ap, "Alice")
+        result = await _resolve_person_cluster(mock_ap, "Alice")
         assert result == "cluster-abc"
 
     @pytest.mark.asyncio
     async def test_case_insensitive_match(self) -> None:
 
-        mock_ap = MagicMock()
+        mock_ap = AsyncMock()
         mock_ap.aggregations.return_value = [
             {"value": "cluster-xyz", "count": 10, "searchData": {"clusterName": "Bob"}},
         ]
-        result = _resolve_person_cluster(mock_ap, "bob")
+        result = await _resolve_person_cluster(mock_ap, "bob")
         assert result == "cluster-xyz"
 
     @pytest.mark.asyncio
     async def test_returns_none_for_unknown(self) -> None:
 
-        mock_ap = MagicMock()
+        mock_ap = AsyncMock()
         mock_ap.aggregations.return_value = []
-        result = _resolve_person_cluster(mock_ap, "UnknownPerson")
+        result = await _resolve_person_cluster(mock_ap, "UnknownPerson")
         assert result is None
 
 

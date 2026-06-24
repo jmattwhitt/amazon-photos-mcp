@@ -97,9 +97,7 @@ class TestToolSchemaValidation:
         assert sf is not None, "set_favorite tool not found"
         props = sf.parameters.get("properties", {})
         assert "favorite" in props, "set_favorite should have 'favorite' param"
-        assert "boolean" in props["favorite"].get("type", ""), (
-            f"'favorite' should be boolean, got {props['favorite']}"
-        )
+        assert "boolean" in props["favorite"].get("type", ""), f"'favorite' should be boolean, got {props['favorite']}"
 
     async def test_set_hidden_schema_has_boolean_parameter(self) -> None:
         from amazon_photos_mcp import mcp

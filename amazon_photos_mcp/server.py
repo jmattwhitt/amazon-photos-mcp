@@ -36,6 +36,7 @@ _READ_ONLY_TOOLS: frozenset[str] = frozenset(
         "get_thumbnail",
         "get_download_progress",
         "advanced_search",
+        "view_photo",
     }
 )
 

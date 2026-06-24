@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import time
@@ -219,23 +218,22 @@ class TestToolDecorator:
     @pytest.mark.asyncio
     async def test_passes_through_success(self):
         @mod_decorators._tool
-        def fn():
+        async def fn():
             return {"ok": True}
 
-        assert fn() == {"ok": True}
+        assert await fn() == {"ok": True}
 
     @pytest.mark.asyncio
     async def test_catches_authentication_error(self):
         @mod_decorators._tool
-        def fn():
+        async def fn():
             raise AuthenticationError()
 
-        result = fn()
+        result = await fn()
         import os
 
         os.environ["AMAZON_PHOTOS_DEBUG"] = "1"
-        result = fn()
-        print("RESULT IS", result)
+        result = await fn()
         assert result["error"] is True
         assert result["code"] == "AUTH_REQUIRED"
         assert "suggestion" in result
@@ -243,10 +241,10 @@ class TestToolDecorator:
     @pytest.mark.asyncio
     async def test_catches_rate_limit_error(self):
         @mod_decorators._tool
-        def fn():
+        async def fn():
             raise RateLimitError(retry_after=30)
 
-        result = fn()
+        result = await fn()
         assert result["error"] is True
         assert result["code"] == "RATE_LIMITED"
         assert result["retry_after_seconds"] == 30
@@ -254,10 +252,10 @@ class TestToolDecorator:
     @pytest.mark.asyncio
     async def test_catches_resource_not_found(self):
         @mod_decorators._tool
-        def fn():
+        async def fn():
             raise ResourceNotFoundError("album", "abc-123")
 
-        result = fn()
+        result = await fn()
         assert result["error"] is True
         assert result["code"] == "NOT_FOUND"
         assert result["resource_type"] == "album"
@@ -265,17 +263,17 @@ class TestToolDecorator:
     @pytest.mark.asyncio
     async def test_unexpected_error_includes_tool_name(self):
         @mod_decorators._tool
-        def my_special_tool():
+        async def my_special_tool():
             raise ValueError("something weird")
 
-        result = my_special_tool()
+        result = await my_special_tool()
         assert result["code"] == "UNEXPECTED_ERROR"
         assert result["tool"] == "my_special_tool"
 
     @pytest.mark.asyncio
     async def test_preserves_function_name(self):
         @mod_decorators._tool
-        def named_fn():
+        async def named_fn():
             return {}
 
         assert named_fn.__name__ == "named_fn"
@@ -357,7 +355,7 @@ class TestToolAnnotations:
         """Every tool registered with mcp should have annotations defined."""
         from amazon_photos_mcp.server import _tool_annotations, mcp
 
-        tools = asyncio.run(mcp._local_provider.list_tools())
+        tools = await mcp._local_provider.list_tools()
         for tool in tools:
             name = tool.name
             ann = _tool_annotations(name)
@@ -499,16 +497,16 @@ class TestPerceptualHash:
     async def test_find_near_duplicates_empty(self) -> None:
         from amazon_photos_mcp.phash import find_near_duplicates
 
-        groups = await find_near_duplicates({})
-        assert groups == []
+        groups = find_near_duplicates({})
+        assert len(groups) == 0
 
     @pytest.mark.asyncio
     async def test_find_near_duplicates_no_matches(self) -> None:
         from amazon_photos_mcp.phash import find_near_duplicates
 
         hashes = {"id1": "a" * 16, "id2": "f" * 16}
-        groups = await find_near_duplicates(hashes, threshold=2)
-        assert groups == []
+        groups = find_near_duplicates(hashes, threshold=2)
+        assert len(groups) == 0
 
     @pytest.mark.asyncio
     async def test_compute_phash_returns_none_for_non_image(self, tmp_path: Path) -> None:
@@ -618,11 +616,12 @@ class TestToolAuthRefresh:
         call_count = 0
 
         @mod_decorators._tool
-        def fn():
+        async def fn():
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 from amazon_photos_mcp.errors import AuthenticationError
+
                 raise AuthenticationError()
             return {"status": "recovered"}
 
@@ -635,7 +634,8 @@ class TestToolAuthRefresh:
             return None
 
         with patch("amazon_photos_mcp.client._get_client", _fake_get_client):
-            result = fn()
+            result = await fn()
 
         assert result == {"status": "recovered"}
+        assert refreshed is True
         assert call_count == 2

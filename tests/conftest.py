@@ -34,8 +34,8 @@ def cookie_file(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_db() -> list[dict[str, Any]]:
-    """Build a minimal parquet-like DataFrame for testing."""
+def _make_mock_items() -> list[dict[str, Any]]:
+    """Build a minimal mock search result list for testing."""
     return [
         {
             "id": "node-001",
@@ -74,7 +74,7 @@ def _make_mock_db() -> list[dict[str, Any]]:
 def mock_ap() -> AsyncMock:
     """Return a pre-configured mock AmazonPhotos client."""
     ap = AsyncMock()
-    ap.db = _make_mock_db()
+    ap.db = _make_mock_items()
 
     # usage()
     ap.usage.return_value = {
@@ -86,11 +86,11 @@ def mock_ap() -> AsyncMock:
     }
 
     # photos() / videos()
-    ap.photos.return_value = _make_mock_db()
+    ap.photos.return_value = _make_mock_items()
     ap.videos.return_value = []
 
     # query()
-    ap.query.return_value = _make_mock_db()
+    ap.query.return_value = _make_mock_items()
 
     # aggregations("allPeople")
     ap.aggregations.return_value = [

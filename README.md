@@ -76,28 +76,13 @@ Amazon Photos requires browser session cookies.
 ### Recommended: One-click browser extraction
 
 ```bash
-uv run --extra scripts python scripts/get_cookies_easy.py
+uv run --extra scripts python scripts/get_cookies.py
 ```
 
 Opens a browser window to amazon.com/photos. Sign in, press Enter in the terminal, done. No copy-paste needed.
 
 First run installs Chromium automatically (`playwright install chromium`).
 
-### Alternative: Extract from Firefox
-
-```bash
-uv run --extra scripts python scripts/get_cookies.py --browser firefox
-```
-
-Firefox stores cookies in plain SQLite. Chrome/Edge cannot be decrypted automatically.
-
-### Alternative: Manual DevTools
-
-```bash
-uv run --extra scripts python scripts/get_cookies.py --manual
-```
-
-Required cookies: `ubid-main`, `at-main`, `session-id`.
 Cookies are saved to `~/.config/amazon-photos-mcp/cookies.json` and expire after ~72 hours.
 
 ## Configure Claude Code

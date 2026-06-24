@@ -36,10 +36,12 @@ class AmazonPhotosClient:
 
         # Configure curl_cffi session with browser impersonation
         self.client: Any = curl_req.AsyncSession()
-        self.client.headers.update({
-            "user-agent": random.choice(USER_AGENTS),
-            "x-amzn-sessionid": session_id,
-        })
+        self.client.headers.update(
+            {
+                "user-agent": random.choice(USER_AGENTS),
+                "x-amzn-sessionid": session_id,
+            }
+        )
         if cookies:
             self.client.cookies.update(cookies)
         self._cookies = cookies
@@ -163,6 +165,7 @@ class AmazonPhotosClient:
 
     async def trash(self, node_ids: List[str], filters: str = "") -> List[Dict[str, Any]]:
         """Move nodes to trash."""
+
         async def _req(batch: List[str]) -> Dict[str, Any]:
             resp = await self.request(
                 "PATCH",
@@ -178,11 +181,13 @@ class AmazonPhotosClient:
                 },
             )
             return resp.json()  # type: ignore[no-any-return]
+
         batches = [node_ids[i : i + 50] for i in range(0, len(node_ids), 50)]
         return await asyncio.gather(*(_req(batch) for batch in batches))
 
     async def restore(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """Restore nodes from trash."""
+
         async def _req(batch: List[str]) -> Dict[str, Any]:
             resp = await self.request(
                 "PATCH",
@@ -197,11 +202,13 @@ class AmazonPhotosClient:
                 },
             )
             return resp.json()  # type: ignore[no-any-return]
+
         batches = [node_ids[i : i + 50] for i in range(0, len(node_ids), 50)]
         return await asyncio.gather(*(_req(batch) for batch in batches))
 
     async def favorite(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """Add media to favorites."""
+
         async def _req(nid: str) -> Dict[str, Any]:
             resp = await self.request(
                 "PATCH",
@@ -209,10 +216,12 @@ class AmazonPhotosClient:
                 json={"settings": {"favorite": True}, "resourceVersion": "V2", "ContentType": "JSON"},
             )
             return resp.json()  # type: ignore[no-any-return]
+
         return await asyncio.gather(*(_req(nid) for nid in node_ids))
 
     async def unfavorite(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """Remove media from favorites."""
+
         async def _req(nid: str) -> Dict[str, Any]:
             resp = await self.request(
                 "PATCH",
@@ -220,10 +229,12 @@ class AmazonPhotosClient:
                 json={"settings": {"favorite": False}, "resourceVersion": "V2", "ContentType": "JSON"},
             )
             return resp.json()  # type: ignore[no-any-return]
+
         return await asyncio.gather(*(_req(nid) for nid in node_ids))
 
     async def hide(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """Hide media."""
+
         async def _req(nid: str) -> Dict[str, Any]:
             resp = await self.request(
                 "PATCH",
@@ -231,10 +242,12 @@ class AmazonPhotosClient:
                 json={"settings": {"hidden": True}, "resourceVersion": "V2", "ContentType": "JSON"},
             )
             return resp.json()  # type: ignore[no-any-return]
+
         return await asyncio.gather(*(_req(nid) for nid in node_ids))
 
     async def unhide(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """Unhide media."""
+
         async def _req(nid: str) -> Dict[str, Any]:
             resp = await self.request(
                 "PATCH",
@@ -242,6 +255,7 @@ class AmazonPhotosClient:
                 json={"settings": {"hidden": False}, "resourceVersion": "V2", "ContentType": "JSON"},
             )
             return resp.json()  # type: ignore[no-any-return]
+
         return await asyncio.gather(*(_req(nid) for nid in node_ids))
 
     async def get_folders(self) -> List[Dict[str, Any]]:
@@ -333,7 +347,7 @@ class AmazonPhotosClient:
         return resp.json()  # type: ignore[no-any-return]
 
     async def download_stream(self, node_id: str) -> AsyncGenerator[bytes, None]:
-        """Yields bytes for downloading a node. Generator function."""
+        """Yields bytes for downloading a node."""
         root = await self.get_root()
         owner_id = root.get("ownerId", "")
         params = {"querySuffix": "?download=true", "ownerId": owner_id}
@@ -369,9 +383,11 @@ class AmazonPhotosClient:
 
         Uses the trash endpoint with permanent deletion semantics.
         """
+
         async def _req(nid: str) -> Dict[str, Any]:
             resp = await self.request("DELETE", f"{self.drive_url}/nodes/{nid}", params=self.base_params)
             return resp.json()  # type: ignore[no-any-return]
+
         return await asyncio.gather(*(_req(nid) for nid in node_ids))
 
     async def upload(self, path: str) -> List[Dict[str, Any]]:

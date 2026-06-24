@@ -41,7 +41,6 @@ async def get_library_stats() -> dict[str, Any]:
     if not items:
         return {"status": "no_data", "message": "Library is empty."}
 
-
     # --- Content type breakdown ---
     type_counts: Counter[str] = Counter()
     for item in items:
@@ -60,21 +59,21 @@ async def get_library_stats() -> dict[str, Any]:
             _raw_sizes.append(int(_s))
     sizes = _raw_sizes
     if sizes:
-            stats["total_size_bytes"] = int(sum(sizes))
-            stats["total_size_gb"] = round(sum(sizes) / (1024**3), 2)
-            buckets = {"<1MB": 0, "1-5MB": 0, "5-10MB": 0, "10-50MB": 0, ">50MB": 0}
-            for s in sizes:
-                if s < 1_048_576:
-                    buckets["<1MB"] += 1
-                elif s < 5_242_880:
-                    buckets["1-5MB"] += 1
-                elif s < 10_485_760:
-                    buckets["5-10MB"] += 1
-                elif s < 52_428_800:
-                    buckets["10-50MB"] += 1
-                else:
-                    buckets[">50MB"] += 1
-            stats["size_distribution"] = buckets
+        stats["total_size_bytes"] = int(sum(sizes))
+        stats["total_size_gb"] = round(sum(sizes) / (1024**3), 2)
+        buckets = {"<1MB": 0, "1-5MB": 0, "5-10MB": 0, "10-50MB": 0, ">50MB": 0}
+        for s in sizes:
+            if s < 1_048_576:
+                buckets["<1MB"] += 1
+            elif s < 5_242_880:
+                buckets["1-5MB"] += 1
+            elif s < 10_485_760:
+                buckets["5-10MB"] += 1
+            elif s < 52_428_800:
+                buckets["10-50MB"] += 1
+            else:
+                buckets[">50MB"] += 1
+        stats["size_distribution"] = buckets
 
     # --- Date range ---
     dates = []
@@ -180,7 +179,6 @@ async def export_metadata(
         if not items:
             return {"status": "no_data", "message": "Library is empty."}
 
-
     if not output_path:
         ext = "csv" if fmt == "csv" else "json"
         output_path = str(Path.home() / "Downloads" / f"amazon-photos-export.{ext}")
@@ -199,7 +197,8 @@ async def export_metadata(
 
     if fmt == "csv":
         import csv
-        with open(out, 'w', newline='', encoding='utf-8') as f:
+
+        with open(out, "w", newline="", encoding="utf-8") as f:
             if records:
                 writer = csv.DictWriter(f, fieldnames=list(records[0].keys()))
                 writer.writeheader()

@@ -50,8 +50,9 @@ amazon_photos_mcp/
 
 ### Client layer
 
-The upstream `amazon-photos` library (Trevor Hobenshield) was replaced by a clean-room
-implementation in v0.3. No dependency on `trevorhobenshield/amazon_photos`.
+### Client layer
+
+The library features a fully independent, clean-room native implementation of the Amazon Photos API.
 
 - `api.py` — `AmazonPhotosClient` wraps `curl_cffi.requests.Session` with browser TLS
   fingerprint impersonation, request retry (3x exponential backoff + jitter), and

@@ -37,6 +37,7 @@ async def list_trashed(within_days: int = 0) -> dict[str, Any]:
     if within_days > 0:
         within_days = min(within_days, 30)
         from datetime import datetime, timedelta, timezone
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=within_days)
 
         def _parse_md(item: dict[str, Any]) -> datetime | None:

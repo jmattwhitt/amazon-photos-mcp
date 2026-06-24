@@ -30,7 +30,7 @@ class TestAllToolsRegistered:
     async def test_tool_is_callable(self, tool_name: str) -> None:
         from amazon_photos_mcp.server import mcp
 
-        tools = asyncio.run(mcp.list_tools())
+        tools = await mcp.list_tools()
         tool = next((t for t in tools if t.name == tool_name), None)
         assert tool is not None, f"{tool_name} not registered with MCP"
 
@@ -39,7 +39,7 @@ class TestAllToolsRegistered:
     async def test_tool_has_docstring(self, tool_name: str) -> None:
         from amazon_photos_mcp.server import mcp
 
-        tools = asyncio.run(mcp.list_tools())
+        tools = await mcp.list_tools()
         tool = next((t for t in tools if t.name == tool_name), None)
         assert tool is not None, f"{tool_name} not registered with MCP"
         assert tool.description, f"{tool_name} has no description"

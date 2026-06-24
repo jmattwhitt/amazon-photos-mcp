@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Annotated, Any
 
+from mcp.server.fastmcp import Context
 from pydantic import Field
 
 from amazon_photos_mcp.client import _get_client
@@ -40,7 +41,7 @@ async def get_photo_url(node_id: Annotated[str, Field(description="The Amazon Ph
 @mcp.tool(annotations=_tool_annotations("get_exif_data"))
 @_tool
 async def get_exif_data(node_id: Annotated[str, Field(description="The Amazon Photos node ID")]) -> dict[str, Any]:
-    """Get EXIF metadata for a photo by node ID. Falls back to local parquet DB if API doesn't expose EXIF."""
+    """Get EXIF metadata for a photo by node ID. Falls back to search API if direct file API doesn't expose EXIF."""
     from amazon_photos_mcp.utils import _clean_row
 
     ap = _get_client()
@@ -299,6 +300,8 @@ async def download(
     }
 
 
+
+
 @mcp.tool(annotations=_tool_annotations("download_library"))
 @_tool
 async def download_library(
@@ -308,6 +311,7 @@ async def download_library(
     organize_by: Annotated[str, Field(description="'year_month' or 'flat'")] = "year_month",
     progress_file: Annotated[str, Field(description="Path to write JSON progress")] = "",
     dry_run: Annotated[bool, Field(description="Count items without downloading")] = False,
+    ctx: Context | None = None,  # type: ignore[type-arg]
 ) -> dict[str, Any]:
     """Download your entire Amazon Photos library for backup or migration.
 
@@ -321,6 +325,7 @@ async def download_library(
         organize_by: "year_month" (2024/01/) or "flat" (single directory)
         progress_file: Path to write JSON progress updates for get_download_progress
         dry_run: If True, count items without downloading anything
+        ctx: FastMCP Context for reporting progress automatically
     """
     ap = _get_client()
     max_items = min(max_items, 10000)
@@ -336,7 +341,6 @@ async def download_library(
     elif os.environ.get("AMAZON_PHOTOS_DOWNLOAD_PROGRESS"):
         progress_path = Path(os.environ["AMAZON_PHOTOS_DOWNLOAD_PROGRESS"])
 
-    # Get all items
     if media_type == "VIDEOS":
         df = await ap.videos()
     else:
@@ -419,6 +423,7 @@ async def download_library(
                 except Exception as e:
                     failed.extend(date_ids)
                     from amazon_photos_mcp.logging import log_error
+
                     log_error("download_library date group %s failed critically: %s", date_dir, e)
         else:
             batch_out = out
@@ -433,6 +438,7 @@ async def download_library(
             except Exception as e:
                 failed.extend(batch)
                 from amazon_photos_mcp.logging import log_error
+
                 log_error("download_library batch %d/%d failed critically: %s", batch_idx + 1, num_batches, e)
 
         # Write progress file
@@ -456,6 +462,9 @@ async def download_library(
                     }
                 )
             )
+
+        if ctx is not None:
+            await ctx.report_progress(downloaded, total)
 
     elapsed = time.monotonic() - start_time
 

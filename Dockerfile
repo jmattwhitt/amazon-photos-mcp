@@ -1,34 +1,17 @@
-# Multi-stage build for amazon-photos-mcp
-# MCP servers use stdio transport — no ports exposed.
-
-FROM python:3.12-slim AS builder
-
-WORKDIR /app
-RUN pip install --no-cache-dir uv
-
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-
-FROM python:3.12-slim AS runtime
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash mcp
+# Copy the project files
+COPY pyproject.toml .
+COPY README.md .
+COPY amazon_photos_mcp/ amazon_photos_mcp/
 
-# Copy venv from builder
-COPY --from=builder /app/.venv /app/.venv
+# Install the dependencies and the project
+RUN uv sync --frozen
+
+# Ensure the executable is available
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy application code
-COPY amazon_photos_mcp/ /app/amazon_photos_mcp/
-
-# Config directory for cookies
-RUN mkdir -p /home/mcp/.config/amazon-photos-mcp && \
-    chown -R mcp:mcp /home/mcp/.config && \
-    chown -R mcp:mcp /app
-
-USER mcp
-
-# MCP servers communicate via stdio
-ENTRYPOINT ["python", "-m", "amazon_photos_mcp"]
+# Run the MCP server over stdio
+ENTRYPOINT ["amazon-photos-mcp"]

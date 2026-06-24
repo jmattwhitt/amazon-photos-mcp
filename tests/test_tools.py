@@ -63,12 +63,14 @@ class TestGetPhotos:
     @pytest.mark.asyncio
     async def test_respects_max_results(self, mock_ap):
         mock_ap.photos.return_value = [{"id": f"n{i}"} for i in range(50)]
-        assert len(await search.get_photos(max_results=10)["items"]) <= 10
+        res = await search.get_photos(max_results=10)
+        assert len(res["items"]) <= 10
 
     @pytest.mark.asyncio
     async def test_caps_at_200(self, mock_ap):
         mock_ap.photos.return_value = [{"id": f"n{i}"} for i in range(500)]
-        assert len(await search.get_photos(max_results=999)["items"]) <= 200
+        res = await search.get_photos(max_results=999)
+        assert len(res["items"]) <= 200
 
 
 class TestGetVideos:
@@ -725,8 +727,7 @@ class TestGetExifData:
             }
         ]
         result = await media.get_exif_data("node-001")
-        print("RESULT EXIF:", result)
-        assert result.get("source") == "local_db" or result.get("error") is True
+        assert result.get("source") == "api_search" or result.get("error") is True
         assert "width" in result["exif"]
         assert result["exif"]["width"] == 4000
         assert result["exif"]["camera"]["make"] == "Canon"
@@ -737,7 +738,6 @@ class TestGetExifData:
         mock_ap.get_file.side_effect = Exception("API error")
         result = await media.get_exif_data("node-999-not-found")
         assert "error" in result or result.get("exif") == {}
-        pass
 
     @pytest.mark.asyncio
     async def test_db_is_none_no_fallback(self, mock_ap):
@@ -746,7 +746,6 @@ class TestGetExifData:
         mock_ap.query.return_value = None
         result = await media.get_exif_data("node-001")
         assert "error" in result or result.get("exif") == {}
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -806,7 +805,7 @@ class TestGetClientInternals:
             patch("pathlib.Path.exists", return_value=True),
         ):
             ap_cls.return_value = MagicMock()
-            result = await mod_client._get_client(force_refresh=True)
+            result = mod_client._get_client(force_refresh=True)
             inv_mock.assert_called_once()
             # force_refresh should clear the autouse-patched _client and create a new one
             assert result is not None
@@ -878,8 +877,6 @@ class TestUploadFolder:
         assert mock_ap.upload.called
 
 
-
-
 # ---------------------------------------------------------------------------
 
 
@@ -909,6 +906,7 @@ class TestFindDuplicates:
         assert result["removable_copies"] == 0
         assert result["groups"] == []
 
+
 # preview_duplicate_group
 # ---------------------------------------------------------------------------
 
@@ -917,7 +915,6 @@ class TestPreviewDuplicateGroup:
     @pytest.mark.asyncio
     async def test_finds_group_by_md5(self, mock_ap):
         result = await duplicates.preview_duplicate_group("aaaa")
-        print("RESULT:", result)
         assert result["md5"] == "aaaa"
         assert result["count"] == 2
         assert "files" in result
@@ -1093,22 +1090,27 @@ class TestDownloadLibrary:
     async def test_download_library_caps_at_10000(self) -> None:
         result = await media.download_library(max_items=50000)
         assert result["status"] in ("ok", "no_data")
+
     @pytest.mark.asyncio
     async def test_download_library_groups_by_date_in_batch(self, mock_ap, tmp_path):
         """Regression: items with different dates in a batch go to correct year/month subdirs."""
         items = []
         for i in range(10):
             month = (i % 3) + 1  # months 1, 2, 3
-            items.append({
-                "id": f"node-d{i}",
-                "name": f"photo{i}.jpg",
-                "createdDate": f"2024-0{month:01d}-15T00:00:00Z",
-                "size": 100,
-                "contentType": "image/jpeg",
-            })
+            items.append(
+                {
+                    "id": f"node-d{i}",
+                    "name": f"photo{i}.jpg",
+                    "createdDate": f"2024-0{month:01d}-15T00:00:00Z",
+                    "size": 100,
+                    "contentType": "image/jpeg",
+                }
+            )
         mock_ap.photos.return_value = items
+
         async def mock_download(ids, out=None, **kwargs):
             return [{"node_id": nid, "status": "ok"} for nid in ids]
+
         mock_ap.download.side_effect = mock_download
         out = tmp_path / "export"
         result = await media.download_library(
@@ -1124,4 +1126,3 @@ class TestDownloadLibrary:
         assert any("2024" in d and "01" in d for d in called_dirs)
         assert any("2024" in d and "02" in d for d in called_dirs)
         assert any("2024" in d and "03" in d for d in called_dirs)
-
