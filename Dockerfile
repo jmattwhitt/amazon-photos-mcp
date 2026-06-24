@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Copy the project files
 COPY pyproject.toml .
+COPY uv.lock .
 COPY README.md .
 COPY amazon_photos_mcp/ amazon_photos_mcp/
 
