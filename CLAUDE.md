@@ -21,7 +21,6 @@ the same enforcement when committing through Claude. Never bypass with
 `--no-verify`.
 
 Commit messages: imperative mood, <=72 char subject, body wraps at 72.
-Co-authored-by trailer is auto-appended.
 
 ## Architecture
 
