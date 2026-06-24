@@ -1,92 +1,42 @@
-# amazon-photos-mcp Handoff
+# Amazon Photos MCP — Architecture Notes
 
-**Date:** 2026-06-17
-**Base commit:** `f48ce26` -> `ab2c84a`
-**Tests:** 313 passed, 0 warnings
+## Overview
 
----
+The server is a FastMCP application with a native Amazon Photos API client (`api.py`)
+built on `curl_cffi` for browser TLS fingerprint impersonation. The client handles
+pagination, retry with exponential backoff, rate limiting, and structured error
+handling (authentication failures, rate limits, circuit breaker trips).
 
-## What Was Done This Session
+## Key Design Decisions
 
-Hostile code review of the clean-room rewrite (`api.py` + `client.py` decoupling from `amazon-photos` upstream). The review read every file in `amazon_photos_mcp/` and `amazon_photos_mcp/tools/`. Six reported bugs were investigated; all were refuted. Two real crash bugs and one logic bug were found and fixed.
+- **No upstream dependency.** The client is a direct implementation of Amazon's
+  undocumented Drive API, reverse-engineered from browser traffic.
+- **curl_cffi over httpx.** Amazon's frontend servers require browser TLS
+  fingerprints; standard Python HTTP libraries are rejected.
+- **Encrypted cookie storage.** Cookies are encrypted at rest with AES-256-GCM
+  (`crypto.py`). The encryption key is derived from a machine-specific secret.
+- **Token-bucket rate limiter.** Configurable via TOML or environment variables.
+  Includes a sliding-window circuit breaker that opens for 30s after repeated
+  failures.
+- **Structured error dicts.** All tool responses are `dict[str, Any]` with
+  consistent `error`, `code`, and `message` keys. The `@_tool` decorator
+  catches exceptions and converts them to this format.
 
-### Fixes Applied
+## Adding a New Tool
 
-| Commit | File | Fix |
-|--------|------|-----|
-| `88e8d16` | `duplicates.py:31` | `md5_groups` dedented from 8 to 4 spaces (was dead code inside `if not items:` block after `return`, causing `NameError` at runtime) |
-| `88e8d16` | `duplicates.py:217` | `md5_groups_dup` dedented from 8 to 4 spaces (same pattern, same `NameError` crash) |
-| `88e8d16` | `media.py:377-418` | `download_library` restructured to group items by date within each batch before downloading |
-| `ab2c84a` | `config.py:14,50-58` | `TomlConfigSettingsSource` wired in via `settings_customise_sources` |
+1. Create the handler function in the appropriate `tools/` module.
+2. Decorate with `@mcp.tool(annotations=_tool_annotations("tool_name"))` and `@_tool`.
+3. Add the tool name to the correct annotation set in `server.py`:
+   `_READ_ONLY_TOOLS`, `_DESTRUCTIVE_TOOLS`, or `_IDEMPOTENT_TOOLS`.
+4. Import the module in `__init__.py` so it registers with the MCP instance.
+5. Add tests using the `mock_ap` fixture from `conftest.py`.
 
-### Reported Bugs Investigated (All Refuted)
+## Running Locally
 
-1. **Missing `download()` method** -- REFUTED. `download()` EXISTS at `api.py:433-463` with matching signature.
-2. **`aggregations()` parameter mismatch** -- REFUTED. Method takes `(self, category)`. No caller passes `out=""`.
-3. **`_is_nan` import failure** -- REFUTED. `media.py:348` imports from `amazon_photos_mcp.utils` (correct path).
-4. **Bare names in `connection.py`** -- REFUTED. All references use `mod_client.` prefix.
-5. **`usage.json()` in `connection.py`** -- REFUTED. No `usage.json()` call exists in the file.
-6. **`usage.json()` in `storage.py`** -- REFUTED. No `usage.json()` call exists in the file.
-
----
-
-## Current Architecture
-
-```
-amazon_photos_mcp/
-+-- __init__.py        Tool module imports + main() entry point
-+-- api.py             NEW - AmazonPhotosClient (curl_cffi, no upstream dep)
-+-- client.py          NEW - Client lifecycle, _get_client(), cookie mgmt
-+-- config.py          TOML + env config (TomlConfigSettingsSource now wired)
-+-- server.py          FastMCP instance + tool annotation sets
-+-- decorators.py      @_tool error-handling decorator
-+-- errors.py          Custom exceptions
-+-- logging.py         Structured logging, timed_tool decorator
-+-- crypto.py          AES-256-GCM cookie encryption
-+-- phash.py           Perceptual hashing
-+-- rate_limiter.py    Token bucket + circuit breaker
-+-- utils.py           _is_nan, _clean_row, _safe_df_to_list, etc.
-+-- tools/
-    +-- __init__.py     Re-export hub
-    +-- connection.py   Connection health tools
-    +-- storage.py      Storage usage + aggregations
-    +-- search.py       Search + browse tools
-    +-- media.py        Download, thumbnails, EXIF (date-org bug fixed)
-    +-- albums.py       Album CRUD
-    +-- folders.py      Folder listing
-    +-- people.py       Face cluster management
-    +-- favorites_hidden.py  Favorite/hide tools
-    +-- trash.py        Trash management
-    +-- upload.py       File upload
-    +-- duplicates.py   Duplicate detection (NameError crashes fixed)
-    +-- library.py      Library health, export, timeline gaps
+```bash
+uv run amazon-photos-mcp
 ```
 
----
-
-## Known Remaining Issues
-
-| Issue | Severity | Status |
-|-------|----------|--------|
-| connection.py:61 dead hasattr(result, "status_code") check | Minor | Fixed (`3470058`) |
-| validate_cookies fragile string matching | Minor | Fixed (`3470058`) |
-| utils.py _safe_df_to_result duplicated guard clauses | Minor | Fixed (`0c1d1c8`) |
-| No test coverage for find_duplicates non-empty path | Medium | Fixed — 3 regression tests added |
-| No test coverage for download_library date org | Medium | Fixed — date-org regression test added |
-| rate_limiter hardcodes rate/capacity | Low | Resolved — configurable via TOML/env (`rate_limit`, `rate_capacity`) |
-
----
-
-## Test Suite
-
-317 passed in ~2.3s, 0 warnings.
-
-Run: `uv run pytest tests/`
-
----
-
-## Open Questions
-
-1. **download_library batch retry safety**: Fixed! If a single item download fails mid-batch, the rest of the batch is no longer skipped. It correctly parses `results = ap.download()` and tallies successes/failures individually.
-2. **curl_cffi ARM compat**: May need platform-specific extras for Apple Silicon / Raspberry Pi.
-3. **Rate limiter config**: Now works via both env vars and TOML file.
+The server starts on stdio (MCP protocol). Configure your MCP client to launch it.
+Cookies must be present at `~/.config/amazon-photos-mcp/cookies.json` or in
+the `AMAZON_PHOTOS_COOKIES` environment variable.
